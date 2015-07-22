@@ -49,6 +49,7 @@ seq_gen.initialize()
 
 #TODO rozszerzenie recurrentstack na reset stanu
 #TODO zobaczyc, jak wygladaja batche i zrobic to samo z jakims tekstem (fuel)
+#TODO dane mam z polskiej wiki, XML, <mediawiki> <page> <text>
 #TODO przerobic na klase
 
 # z markov_tutorial
