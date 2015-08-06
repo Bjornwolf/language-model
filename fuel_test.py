@@ -32,11 +32,7 @@ data = TextFile(files = files,
 print "OK"
 cnt = 0
 
-ds = DataStream(data).get_epoch_iterator()
-pickle.dump(ds, open('ds.p', 'wb'))
-ds = pickle.load(open('ds.p', 'rb'))
-#for one in DataStream(data).get_epoch_iterator():
-for one in ds:
+for one in DataStream(data).get_epoch_iterator():
     cnt += 1
     print one
 print cnt
