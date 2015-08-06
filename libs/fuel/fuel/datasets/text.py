@@ -108,8 +108,8 @@ class TextFile(Dataset):
     def get_data(self, state=None, request=None):
         if request is not None:
             raise ValueError
-        #pickle.dump(state, open('tmpstate.p', 'wb'))
-        #state = pickle.load(open('tmpstate.p', 'wb'))
+        pickle.dump(state, open('tmpstate.p', 'wb'))
+        state = pickle.load(open('tmpstate.p', 'rb'))
         sentence = state.next().read()
         # sentence = next(state)
         if self.preprocess is not None:

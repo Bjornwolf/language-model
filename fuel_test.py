@@ -1,5 +1,6 @@
 from fuel.datasets import Dataset, TextFile
 from fuel.streams import DataStream
+#import dill as pickle
 import pickle
 
 def get_unique_chars(filelist):
@@ -18,7 +19,7 @@ def get_unique_chars(filelist):
         result[letter] = i + 1
     return result
         
-art_count = 40000
+art_count = 100
 
 files = ["data/plwiki/art" + str(i) for i in range(1, art_count + 1)]
 data = TextFile(files = files,
@@ -33,7 +34,7 @@ cnt = 0
 
 ds = DataStream(data).get_epoch_iterator()
 pickle.dump(ds, open('ds.p', 'wb'))
-ds = pickle.load(open('ds.p', 'wb'))
+ds = pickle.load(open('ds.p', 'rb'))
 #for one in DataStream(data).get_epoch_iterator():
 for one in ds:
     cnt += 1
