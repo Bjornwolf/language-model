@@ -2,6 +2,22 @@ from picklable_itertools import iter_, chain
 
 from fuel.datasets import Dataset
 
+import pickle
+
+class LazyFileIterator:
+    def __init__(self, file_list):
+        self.file_list = file_list
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if self.file_list == []:
+            raise StopIteration
+        file_handle = open(self.file_list[0])
+        self.file_list = self.file_list[1:]
+        return file_handle
+
 
 class TextFile(Dataset):
     r"""Reads text files and numberizes them given a dictionary.
@@ -84,13 +100,18 @@ class TextFile(Dataset):
         self.preprocess = preprocess
         super(TextFile, self).__init__()
 
+
     def open(self):
-        return chain(*[iter_(open(f)) for f in self.files])
+        return LazyFileIterator(self.files)
+        # return chain(*[iter_(open(f)) for f in self.files])
 
     def get_data(self, state=None, request=None):
         if request is not None:
             raise ValueError
-        sentence = next(state)
+        #pickle.dump(state, open('tmpstate.p', 'wb'))
+        #state = pickle.load(open('tmpstate.p', 'wb'))
+        sentence = state.next().read()
+        # sentence = next(state)
         if self.preprocess is not None:
             sentence = self.preprocess(sentence)
         data = [self.dictionary[self.bos_token]] if self.bos_token else []
