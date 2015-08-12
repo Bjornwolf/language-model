@@ -15,9 +15,11 @@ from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.main_loop import MainLoop
 from blocks.select import Selector
 from theano import tensor
+from fuel_test import get_unique_chars
 
 #TODO
 # alphabet_size
+
 alphabet_size = 40
 lstm_dim = 512
 
@@ -61,9 +63,17 @@ algorithm = GradientDescent(
                 cost=cost,
                 parameters=list(Selector(seq_gen).get_parameters().values()),
                 step_rule=Scale(0.001))
+files = ['data/plwiki/art' + str(i) for i in range(1, 500)]
+text_files = TextFile(files = files,
+                      dictionary = get_unique_chars(files),
+                      bos_token = None,
+                      eos_token = None,
+                      unk_token = '<UNK>',
+                      level = 'character')
+
 main_loop = MainLoop(
                 algorithm=algorithm,
-                data_stream=None, #TODO
+                data_stream=DataStream(text_files),
                 model=Model(cost),
                 extensions=[Checkpoint(save_path, every_n_batches=500),
                             Printing(every_n_batches=100),
@@ -73,13 +83,5 @@ main_loop = MainLoop(
                                                    every_n_batches=100),
                             FinishAfter(after_n_batches=num_batches)])
 
-
-print x
-print x.shape[1]
-print seq_gen.cost_matrix(x)
-
-#h = lstm.apply(x)
-
-
-#f = theano.function([x], h)
+main_loop.run()
 
