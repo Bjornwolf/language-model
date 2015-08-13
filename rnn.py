@@ -1,6 +1,7 @@
 import numpy
 import theano
 import blocks
+from blocks.algorithms import GradientDescent, Scale
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent import RecurrentStack
 from blocks.bricks.sequence_generators import (SequenceGenerator, 
