@@ -16,6 +16,8 @@ from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.main_loop import MainLoop
 from blocks.select import Selector
 from theano import tensor
+from fuel.datasets import Dataset, TextFile
+from fuel.streams import DataStream
 from fuel_test import get_unique_chars
 
 #TODO rozszerzenie recurrentstack na reset stanu
@@ -29,7 +31,7 @@ text_files = TextFile(files = files,
                       eos_token = None,
                       unk_token = '<UNK>',
                       level = 'character')
-alphabet_size = len(dictionary.keys)
+alphabet_size = len(dictionary.keys())
 
 lstm_dim = 512
 
