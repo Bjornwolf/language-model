@@ -18,10 +18,19 @@ from blocks.select import Selector
 from theano import tensor
 from fuel_test import get_unique_chars
 
-#TODO
-# alphabet_size
+#TODO rozszerzenie recurrentstack na reset stanu
+#TODO przerobic na klase
 
-alphabet_size = 40
+files = ['data/plwiki/art' + str(i) for i in range(1, 500)]
+dictionary = get_unique_chars(files)
+text_files = TextFile(files = files,
+                      dictionary = dictionary,
+                      bos_token = None,
+                      eos_token = None,
+                      unk_token = '<UNK>',
+                      level = 'character')
+alphabet_size = len(dictionary.keys)
+
 lstm_dim = 512
 
 lstm1 = LSTM(dim=lstm_dim, use_bias=False,
@@ -50,11 +59,6 @@ seq_gen.push_initialization_config()
 rnn.weights_init = Orthogonal()
 seq_gen.initialize()
 
-#TODO rozszerzenie recurrentstack na reset stanu
-#TODO zobaczyc, jak wygladaja batche i zrobic to samo z jakims tekstem (fuel)
-#TODO dane mam z polskiej wiki, XML, <mediawiki> <page> <text>
-#TODO przerobic na klase
-
 # z markov_tutorial
 x = tensor.lmatrix('data')
 cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
@@ -64,13 +68,6 @@ algorithm = GradientDescent(
                 cost=cost,
                 parameters=list(Selector(seq_gen).get_parameters().values()),
                 step_rule=Scale(0.001))
-files = ['data/plwiki/art' + str(i) for i in range(1, 500)]
-text_files = TextFile(files = files,
-                      dictionary = get_unique_chars(files),
-                      bos_token = None,
-                      eos_token = None,
-                      unk_token = '<UNK>',
-                      level = 'character')
 
 main_loop = MainLoop(
                 algorithm=algorithm,
