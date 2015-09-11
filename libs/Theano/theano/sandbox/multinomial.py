@@ -13,15 +13,15 @@ if cuda_available:
 
 
 class MultinomialFromUniform(Op):
-    '''Converts samples from a uniform into sample from a multinomial.'''
+    """
+    Converts samples from a uniform into sample from a multinomial.
+
+    """
+
+    __props__ = ("odtype",)
+
     def __init__(self, odtype):
         self.odtype = odtype
-
-    def __eq__(self, other):
-        return type(self) == type(other) and self.odtype == other.odtype
-
-    def __hash__(self):
-        return hash((type(self), self.odtype))
 
     def __str__(self):
         return '%s{%s}' % (self.__class__.__name__, self.odtype)
@@ -168,7 +168,8 @@ class GpuMultinomialFromUniform(MultinomialFromUniform, GpuOp):
     The output is transposed compared to MultinomialFromUniform.
     We must insert a Transpose op after it.
 
-    The optimization that move it to the gpu do it.
+    The optimization that moves it to the gpu does it.
+
     """
 
     def make_node(self, pvals, unis):

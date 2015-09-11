@@ -14,13 +14,15 @@ from theano.gof import (local_optimizer, EquilibriumDB,
                         SequenceDB, Optimizer, toolbox)
 from theano.gof.optdb import LocalGroupDB
 
+from theano.scalar.basic import Scalar, Pow, Cast
 from theano.scan_module import scan_utils, scan_op, scan_opt
 
 from theano.tensor.nnet.conv import ConvOp
 from theano.tests.breakpoint import PdbBreakpoint
 
 from .type import GpuArrayType, GpuArrayConstant
-from .basic_ops import (host_from_gpu, gpu_from_host,
+from .basic_ops import (as_gpuarray_variable,
+                        host_from_gpu, gpu_from_host,
                         HostFromGpu, GpuFromHost,
                         GpuSplit, GpuContiguous,
                         gpu_alloc, GpuAlloc, GpuReshape,
@@ -87,7 +89,9 @@ def safe_to_cpu(x):
 def op_lifter(OP, cuda_only=False):
     """
     OP(..., host_from_gpu(), ...) -> host_from_gpu(GpuOP(...))
+
     gpu_from_host(OP(inp0, ...)) -> GpuOP(inp0, ...)
+
     """
     def f(maker):
         def local_opt(node):
@@ -120,7 +124,10 @@ def op_lifter(OP, cuda_only=False):
 
 
 class InputToGpuOptimizer(Optimizer):
-    "Transfer the input to the gpu to start the rolling wave."
+    """
+    Transfer the input to the gpu to start the rolling wave.
+
+    """
 
     def add_requirements(self, fgraph):
         fgraph.attach_feature(toolbox.ReplaceValidate())
@@ -171,6 +178,7 @@ def local_gpuaalloc2(node):
     Join(axis, {Alloc or HostFromGPU}, ...) -> Join(axis, GpuAlloc, Alloc, ...)
 
     Moves an alloc that is an input to join to the gpu.
+
     """
     if (isinstance(node.op, tensor.Alloc) and
         all(c != 'output' and
@@ -262,10 +270,39 @@ def local_gpu_elemwise(node):
     name = op.name
     if name:
         name = 'Gpu' + name
+    if len(node.outputs) > 1:
+        return
     res = GpuElemwise(scal_op, name=name,
                       inplace_pattern=copy.copy(op.inplace_pattern),
                       nfunc_spec=op.nfunc_spec)
-    return res
+
+    # If the elemwise operation is a pow, casts might be required on the
+    # inputs and or outputs because only the (float, float)->float and
+    # (double, double)->double cases are implemented at the moment.
+    if isinstance(op.scalar_op, Pow):
+
+        # Only transfer the computation on the gpu if the output dtype is
+        # floating point. Else, give up on the transfer to the gpu.
+        out_dtype = node.outputs[0].dtype
+        if out_dtype not in ['float16', 'float32', 'float64']:
+            return
+
+        # Transfer the inputs on the GPU and cast them to the right dtype.
+        new_inputs = []
+        for inp in node.inputs:
+            if inp.dtype != out_dtype:
+                gpu_cast_op = GpuElemwise(Cast(Scalar(out_dtype)))
+                new_inputs.append(gpu_cast_op(as_gpuarray_variable(inp)))
+            else:
+                new_inputs.append(as_gpuarray_variable(inp))
+
+        # Perform the exponent on the gpu and transfer the output back to the
+        # cpu.
+        gpu_output = res(*new_inputs)
+        cpu_output = host_from_gpu(gpu_output)
+        return [cpu_output]
+    else:
+        return res
 
 
 def max_inputs_to_GpuElemwise(node):
@@ -624,6 +661,7 @@ def local_gpu_conv(node):
     gpu_from_host(conv) -> gpu_conv(gpu_from_host)
 
     conv(host_from_gpu) -> host_from_gpu(gpu_conv)
+
     """
     def GpuConvOp_from_ConvOp(op):
         logical_img_hw = None
@@ -639,8 +677,12 @@ def local_gpu_conv(node):
                       logical_kern_align_top=op.kshp_logical_top_aligned,
                       kshp=op.kshp,
                       version=op.version,
+                      direction_hint=op.direction_hint,
                       verbose=op.verbose,
                       imshp=op.imshp,
+                      nkern=op.nkern,
+                      bsize=op.bsize,
+                      fft_opt=op.fft_opt
                       )
         if op.imshp_logical is not None:
             logical_img_hw = op.imshp_logical[1:3]
@@ -664,7 +706,8 @@ def local_gpu_conv(node):
         return ret
 
     def values_eq_approx(a, b):
-        """This fct is needed to don't have DebugMode raise useless
+        """
+        This fct is needed to don't have DebugMode raise useless
         error due to ronding error.
 
         This happen as We reduce on the two last dimensions, so this
@@ -702,7 +745,10 @@ register_opt()(conv_groupopt)
 @register_opt("low_memory")
 @local_optimizer([GpuCAReduceCuda])
 def local_gpu_elemwise_careduce(node):
-    """ Merge some GpuCAReduceCuda and GPUElemwise"""
+    """
+    Merge some GpuCAReduceCuda and GPUElemwise.
+
+    """
     if (isinstance(node.op, GpuCAReduceCuda) and
             node.op.pre_scalar_op is None and
             node.inputs[0].owner and
@@ -733,10 +779,11 @@ def tensor_to_gpu(x):
 def gpu_safe_new(x, tag=''):
     """
     Internal function that constructs a new variable from x with the same
-    type, but with a different name ( old name + tag). This function is used
+    type, but with a different name (old name + tag). This function is used
     by gradient, or the R-op to construct new variables for the inputs of
     the inner graph such that there is no interference between the original
     graph and the newly constructed graph.
+
     """
     if hasattr(x, 'name') and x.name is not None:
         nw_name = x.name + tag
@@ -754,8 +801,9 @@ def gpu_reconstruct_graph(inputs, outputs, tag=None):
     """
     Different interface to clone, that allows you to pass inputs.
     Compared to clone, this method always replaces the inputs with
-    new variables of the same type, and returns those ( in the same
+    new variables of the same type, and returns those (in the same
     order as the original inputs).
+
     """
     if tag is None:
         tag = ''
