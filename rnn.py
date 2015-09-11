@@ -62,7 +62,7 @@ readout = Readout(readout_dim = alphabet_size,
                   name="readout")
 
 seq_gen = SequenceGenerator(readout=readout,
-                            transition=lstm1,
+                            transition=rnn,
                             weights_init=IsotropicGaussian(0.01),
                             biases_init=Constant(0),
                             name="generator")
@@ -87,7 +87,7 @@ print VariableFilter(roles=[WEIGHT], bricks=[lstm3])(cg_variables)
 print "ZMIENNE RAZEM W RNN"
 print VariableFilter(roles=[WEIGHT], bricks=[rnn])(cg_variables)
 
-theano.printing.pydotprint(cost, outfile="./pics/symbolic_graph_unopt.png", var_with_name_simple=True)
+# theano.printing.pydotprint(cost, outfile="./pics/symbolic_graph_unopt.png", var_with_name_simple=True)
 
 variables = VariableFilter(roles=[WEIGHT], bricks=[lstm1])(cg_variables)
 for var in variables:
