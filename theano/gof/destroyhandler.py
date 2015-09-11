@@ -1,6 +1,7 @@
 """
 Classes and functions for validating graphs that contain view
 and inplace operations.
+
 """
 from collections import deque
 
@@ -13,38 +14,45 @@ from theano.compat import OrderedDict
 from theano.misc.ordered_set import OrderedSet
 
 from .fg import InconsistencyError
+from six.moves.queue import Queue
 
 
 class ProtocolError(Exception):
-    """Raised when FunctionGraph calls DestroyHandler callbacks in
+    """
+    Raised when FunctionGraph calls DestroyHandler callbacks in
     an invalid way, for example, pruning or changing a node that has
     never been imported.
+
     """
+
     pass
 
 
 def _contains_cycle(fgraph, orderings):
     """
 
-    fgraph  - the FunctionGraph to check for cycles
+    Parameters
+    ----------
+    fgraph
+        The FunctionGraph to check for cycles.
+    orderings
+        Dictionary specifying extra dependencies besides those encoded in
+        Variable.owner / Apply.inputs.
 
-    orderings - dictionary specifying extra dependencies besides
-                 those encoded in Variable.owner / Apply.inputs
+        If orderings[my_apply] == dependencies, then my_apply is an Apply
+        instance, dependencies is a set of Apply instances, and every member
+        of dependencies must be executed before my_apply.
 
-                If orderings[my_apply] == dependencies,
+        The dependencies are typically used to prevent
+        inplace apply nodes from destroying their input before
+        other apply nodes with the same input access it.
 
-                then my_apply is an Apply instance,
-                dependencies is a set of Apply instances,
-                and every member of dependencies must be executed
-                before my_apply.
+    Returns
+    -------
+    bool
+        True if the graph contains a cycle, False otherwise.
 
-                The dependencies are typically used to prevent
-                inplace apply nodes from destroying their input before
-                other apply nodes with the same input access it.
-
-    Returns True if the graph contains a cycle, False otherwise.
     """
-
     # These are lists of Variable instances
     outputs = fgraph.outputs
 
@@ -178,52 +186,63 @@ def _contains_cycle(fgraph, orderings):
     return visited != len(parent_counts)
 
 
-def getroot(r, view_i):
-    """
-    TODO: what is view_i ? based on add_impact's docstring, IG is guessing
-          it might be a dictionary mapping variables to views, but what is
-          a view? In these old docstrings I'm not sure if "view" always
-          means "view variable" or if it also sometimes means "viewing
-          pattern."
-    For views: Return non-view variable which is ultimatly viewed by r.
-    For non-views: return self.
-    """
-    try:
-        return getroot(view_i[r], view_i)
-    except KeyError:
-        return r
+def _build_droot_impact(destroy_handler):
+    droot = {}   # destroyed view + nonview variables -> foundation
+    impact = {}  # destroyed nonview variable -> it + all views of it
+    root_destroyer = {}  # root -> destroyer apply
 
+    for app in destroy_handler.destroyers:
+        for output_idx, input_idx_list in app.op.destroy_map.items():
+            if len(input_idx_list) != 1:
+                raise NotImplementedError()
+            input_idx = input_idx_list[0]
+            input = app.inputs[input_idx]
 
-def add_impact(r, view_o, impact):
-    """
-    In opposition to getroot, which finds the variable that is viewed *by* r, this function
-    returns all the variables that are views of r.
+            # Find non-view variable which is ultimatly viewed by input.
+            view_i = destroy_handler.view_i
+            _r = input
+            while _r is not None:
+                r = _r
+                _r = view_i.get(r)
+            input_root = r
 
-    :param impact: is a set of variables that are views of r
-    :param droot: a dictionary mapping views -> r
+            if input_root in droot:
+                raise InconsistencyError(
+                    "Multiple destroyers of %s" % input_root)
+            droot[input_root] = input_root
+            root_destroyer[input_root] = app
 
-    TODO: this docstring is hideously wrong, the function doesn't return anything.
-          has droot been renamed to view_o?
-          does it add things to the impact argument instead of returning them?
-          IG thinks so, based on reading the code. It looks like get_impact
-          does what this docstring said this function does.
-    """
-    for v in view_o.get(r, []):
-        impact.add(v)
-        add_impact(v, view_o, impact)
+            # The code here add all the variables that are views of r into
+            # an OrderedSet input_impact
+            input_impact = OrderedSet()
+            queue = Queue()
+            queue.put(input_root)
+            while not queue.empty():
+                v = queue.get()
+                for n in destroy_handler.view_o.get(v, []):
+                    input_impact.add(n)
+                    queue.put(n)
 
+            for v in input_impact:
+                assert v not in droot
+                droot[v] = input_root
 
-def get_impact(root, view_o):
-    impact = OrderedSet()
-    add_impact(root, view_o, impact)
-    return impact
+            impact[input_root] = input_impact
+            impact[input_root].add(input_root)
+
+    return droot, impact, root_destroyer
 
 
 def fast_inplace_check(inputs):
-    """ Return the variables in inputs that are posible candidate for as inputs of inplace operation
+    """
+    Return the variables in inputs that are posible candidate for as inputs of
+    inplace operation.
 
-    :type inputs: list
-    :param inputs: inputs Variable that you want to use as inplace destination
+    Parameters
+    ----------
+    inputs : list
+        Inputs Variable that you want to use as inplace destination.
+
     """
     fgraph = inputs[0].fgraph
     Supervisor = theano.compile.function_module.Supervisor
@@ -242,38 +261,42 @@ if 0:
     # old, non-incremental version of the DestroyHandler
     class DestroyHandler(toolbox.Bookkeeper):
         """
-        The DestroyHandler class detects when a graph is impossible to evaluate because of
-        aliasing and destructive operations.
+        The DestroyHandler class detects when a graph is impossible to evaluate
+        because of aliasing and destructive operations.
 
         Several data structures are used to do this.
 
-        When an Op uses its view_map property to declare that an output may be aliased
-        to an input, then if that output is destroyed, the input is also considering to be
-        destroyed.  The view_maps of several Ops can feed into one another and form a directed graph.
-        The consequence of destroying any variable in such a graph is that all variables in the graph
-        must be considered to be destroyed, because they could all be refering to the same
-        underlying storage.  In the current implementation, that graph is a tree, and the root of
-        that tree is called the foundation.  The `droot` property of this class maps from every
-        graph variable to its foundation.  The `impact` property maps backward from the foundation
-        to all of the variables that depend on it. When any variable is destroyed, this class marks
-        the foundation of that variable as being destroyed, with the `root_destroyer` property.
+        When an Op uses its view_map property to declare that an output may be
+        aliased to an input, then if that output is destroyed, the input is also
+        considering to be destroyed. The view_maps of several Ops can feed into
+        one another and form a directed graph. The consequence of destroying any
+        variable in such a graph is that all variables in the graph must be
+        considered to be destroyed, because they could all be refering to the
+        same underlying storage. In the current implementation, that graph is a
+        tree, and the root of that tree is called the foundation. The `droot`
+        property of this class maps from every graph variable to its foundation.
+        The `impact` property maps backward from the foundation to all of the
+        variables that depend on it. When any variable is destroyed, this class
+        marks the foundation of that variable as being destroyed, with the
+        `root_destroyer` property.
+
         """
 
         droot = {}
         """
-        destroyed view + nonview variables -> foundation
-        """
+        destroyed view + nonview variables -> foundation.
 
+        """
         impact = {}
         """
-        destroyed nonview variable -> it + all views of it
-        """
+        destroyed nonview variable -> it + all views of it.
 
+        """
         root_destroyer = {}
         """
-        root -> destroyer apply
-        """
+        root -> destroyer apply.
 
+        """
         def __init__(self, do_imports_on_attach=True):
             self.fgraph = None
             self.do_imports_on_attach = do_imports_on_attach
@@ -288,8 +311,8 @@ if 0:
                compilation to be slower.
 
             TODO: WRITEME: what does this do besides the checks?
-            """
 
+            """
             # Do the checking #
             already_there = False
             if self.fgraph not in [None, fgraph]:
@@ -338,38 +361,9 @@ if 0:
 
         def refresh_droot_impact(self):
             if self.stale_droot:
-                self.droot, self.impact, self.root_destroyer = self._build_droot_impact()
+                self.droot, self.impact, self.root_destroyer = _build_droot_impact(self)
                 self.stale_droot = False
             return self.droot, self.impact, self.root_destroyer
-
-        def _build_droot_impact(self):
-            droot = {}   # destroyed view + nonview variables -> foundation
-            impact = {}  # destroyed nonview variable -> it + all views of it
-            root_destroyer = {}  # root -> destroyer apply
-
-            for app in self.destroyers:
-                for output_idx, input_idx_list in iteritems(app.op.destroy_map):
-                    if len(input_idx_list) != 1:
-                        raise NotImplementedError()
-                    input_idx = input_idx_list[0]
-                    input = app.inputs[input_idx]
-                    input_root = getroot(input, self.view_i)
-                    if input_root in droot:
-                        raise InconsistencyError(
-                            "Multiple destroyers of %s" % input_root)
-                    droot[input_root] = input_root
-                    root_destroyer[input_root] = app
-                    # input_impact = set([input_root])
-                    # add_impact(input_root, self.view_o, input_impact)
-                    input_impact = get_impact(input_root, self.view_o)
-                    for v in input_impact:
-                        assert v not in droot
-                        droot[v] = input_root
-
-                    impact[input_root] = input_impact
-                    impact[input_root].add(input_root)
-
-            return droot, impact, root_destroyer
 
         def on_detach(self, fgraph):
             if fgraph is not self.fgraph:
@@ -385,8 +379,10 @@ if 0:
             self.fgraph = None
 
         def on_import(self, fgraph, app, reason):
-            """Add Apply instance to set which must be computed"""
+            """
+            Add Apply instance to set which must be computed.
 
+            """
             # if app in self.debug_all_apps: raise ProtocolError("double import")
             # self.debug_all_apps.add(app)
             # print 'DH IMPORT', app, id(app), id(self), len(self.debug_all_apps)
@@ -417,7 +413,10 @@ if 0:
             self.stale_droot = True
 
         def on_prune(self, fgraph, app, reason):
-            """Remove Apply instance from set which must be computed"""
+            """
+            Remove Apply instance from set which must be computed.
+
+            """
             # if app not in self.debug_all_apps: raise ProtocolError("prune without import")
             # self.debug_all_apps.remove(app)
 
@@ -449,7 +448,10 @@ if 0:
             self.stale_droot = True
 
         def on_change_input(self, fgraph, app, i, old_r, new_r, reason):
-            """app.inputs[i] changed from old_r to new_r """
+            """
+            app.inputs[i] changed from old_r to new_r.
+
+            """
             if app == 'output':
                 # app == 'output' is special key that means FunctionGraph is redefining which nodes are being
                 # considered 'outputs' of the graph.
@@ -488,14 +490,14 @@ if 0:
             self.stale_droot = True
 
         def validate(self, fgraph):
-            """Return None
+            """
+            Return None.
 
             Raise InconsistencyError when
             a) orderings() raises an error
             b) orderings cannot be topologically sorted.
 
             """
-
             if self.destroyers:
                 ords = self.orderings(fgraph)
 
@@ -509,7 +511,8 @@ if 0:
             return True
 
         def orderings(self, fgraph):
-            """Return orderings induced by destructive operations.
+            """
+            Return orderings induced by destructive operations.
 
             Raise InconsistencyError when
             a) attempting to destroy indestructable variable, or
@@ -659,6 +662,7 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
 
     The following data structures remain to be converted:
         <unknown>
+
     """
     pickle_rm_attr = ["destroyers"]
 
@@ -666,38 +670,48 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         self.fgraph = None
         self.do_imports_on_attach = do_imports_on_attach
 
-        """maps every variable in the graph to its "foundation" (deepest
-        ancestor in view chain)
-        TODO: change name to var_to_vroot"""
+        """
+        Maps every variable in the graph to its "foundation" (deepest
+        ancestor in view chain).
+        TODO: change name to var_to_vroot.
+
+        """
         self.droot = OrderedDict()
 
-        """maps a variable to all variables that are indirect or direct views of it
-         (including itself)
-         essentially the inverse of droot
-        TODO: do all variables appear in this dict, or only those that are foundations?
-        TODO: do only destroyed variables go in here? one old docstring said so
-        TODO: rename to x_to_views after reverse engineering what x is"""
+        """
+        Maps a variable to all variables that are indirect or direct views of it
+        (including itself) essentially the inverse of droot.
+        TODO: do all variables appear in this dict, or only those that are
+              foundations?
+        TODO: do only destroyed variables go in here? one old docstring said so.
+        TODO: rename to x_to_views after reverse engineering what x is
+
+        """
         self.impact = OrderedDict()
 
-        """if a var is destroyed, then this dict will map
+        """
+        If a var is destroyed, then this dict will map
         droot[var] to the apply node that destroyed var
-        TODO: rename to vroot_to_destroyer"""
+        TODO: rename to vroot_to_destroyer
+
+        """
         self.root_destroyer = OrderedDict()
 
     def on_attach(self, fgraph):
         """
         When attaching to a new fgraph, check that
             1) This DestroyHandler wasn't already attached to some fgraph
-               (its data structures are only set up to serve one)
+               (its data structures are only set up to serve one).
             2) The FunctionGraph doesn't already have a DestroyHandler.
                This would result in it validating everything twice, causing
                compilation to be slower.
 
         Give the FunctionGraph instance:
             1) A new method "destroyers(var)"
-                TODO: what does this do exactly?
+               TODO: what does this do exactly?
             2) A new attribute, "destroy_handler"
         TODO: WRITEME: what does this do besides the checks?
+
         """
 
         # Do the checking #
@@ -745,35 +759,13 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
 
     def refresh_droot_impact(self):
         """
-        Makes sure self.droot, self.impact, and self.root_destroyer are
-        up to date, and returns them.
-        (see docstrings for these properties above)
+        Makes sure self.droot, self.impact, and self.root_destroyer are up to
+        date, and returns them (see docstrings for these properties above).
+
         """
         if self.stale_droot:
-            droot = OrderedDict()   # destroyed view + nonview variables -> foundation
-            impact = OrderedDict()  # destroyed nonview variable -> it + all views of it
-            root_destroyer = OrderedDict()  # root -> destroyer apply
-
-            for app in self.destroyers:
-                for output_idx, input_idx_list in iteritems(app.op.destroy_map):
-                    if len(input_idx_list) != 1:
-                        raise NotImplementedError()
-                    input_idx = input_idx_list[0]
-                    input = app.inputs[input_idx]
-                    input_root = getroot(input, self.view_i)
-                    if input_root in droot:
-                        raise InconsistencyError(
-                            "Multiple destroyers of %s" % input_root)
-                    droot[input_root] = input_root
-                    root_destroyer[input_root] = app
-                    input_impact = get_impact(input_root, self.view_o)
-                    for v in input_impact:
-                        assert v not in droot
-                        droot[v] = input_root
-
-                    impact[input_root] = input_impact
-                    impact[input_root].add(input_root)
-            self.droot, self.impact, self.root_destroyer = droot, impact, root_destroyer
+            self.droot, self.impact, self.root_destroyer =\
+                _build_droot_impact(self)
             self.stale_droot = False
         return self.droot, self.impact, self.root_destroyer
 
@@ -791,7 +783,10 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         self.fgraph = None
 
     def on_import(self, fgraph, app, reason):
-        """Add Apply instance to set which must be computed"""
+        """
+        Add Apply instance to set which must be computed.
+
+        """
 
         if app in self.debug_all_apps:
             raise ProtocolError("double import")
@@ -824,7 +819,10 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         self.stale_droot = True
 
     def on_prune(self, fgraph, app, reason):
-        """Remove Apply instance from set which must be computed"""
+        """
+        Remove Apply instance from set which must be computed.
+
+        """
         if app not in self.debug_all_apps:
             raise ProtocolError("prune without import")
         self.debug_all_apps.remove(app)
@@ -858,7 +856,10 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         self.stale_droot = True
 
     def on_change_input(self, fgraph, app, i, old_r, new_r, reason):
-        """app.inputs[i] changed from old_r to new_r """
+        """
+        app.inputs[i] changed from old_r to new_r.
+
+        """
         if app == 'output':
             # app == 'output' is special key that means FunctionGraph is redefining which nodes are being
             # considered 'outputs' of the graph.
@@ -898,14 +899,14 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         self.stale_droot = True
 
     def validate(self, fgraph):
-        """Return None
+        """
+        Return None.
 
         Raise InconsistencyError when
         a) orderings() raises an error
         b) orderings cannot be topologically sorted.
 
         """
-
         if self.destroyers:
             ords = self.orderings(fgraph)
 
@@ -926,7 +927,8 @@ class DestroyHandler(toolbox.Bookkeeper):  # noqa
         return True
 
     def orderings(self, fgraph):
-        """Return orderings induced by destructive operations.
+        """
+        Return orderings induced by destructive operations.
 
         Raise InconsistencyError when
         a) attempting to destroy indestructable variable, or

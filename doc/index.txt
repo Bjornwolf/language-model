@@ -21,6 +21,11 @@ Montreal).
 News
 ====
 
+* We added support for :ref:`CuDNN v3 <libdoc_cuda_dnn>`.
+
+* We added support for :attr:`CNMeM <config.lib.cnmem>` to speed up
+  the GPU memory allocation.
+
 * Theano 0.7 was released 26th March 2015. Everybody is encouraged to update.
 
 * We support `cuDNN <http://deeplearning.net/software/theano/library/sandbox/cuda/dnn.html>`_ if it is installed by the user.
@@ -76,11 +81,11 @@ installation and configuration, see :ref:`installing Theano <install>`.
 
   .. raw:: html
 
-     <a href="https://crate.io/packages/Theano/"><img src="https://pypip.in/v/Theano/badge.png" alt="Latest PyPI version" /></a>&nbsp;
+     <a href="https://crate.io/packages/Theano/"><img src="https://img.shields.io/pypi/v/Theano.svg" alt="Latest PyPI version" /></a>&nbsp;
 
   .. raw:: html
 
-     <a href="https://crate.io/packages/Theano/"><img src="https://pypip.in/d/Theano/badge.png" alt="Number of PyPI downloads" /></a>&nbsp;
+     <a href="https://crate.io/packages/Theano/"><img src="https://img.shields.io/pypi/dm/Theano.svg" alt="Number of PyPI downloads" /></a>&nbsp;
 
 .. _available on PyPI: http://pypi.python.org/pypi/Theano
 .. _Related Projects: https://github.com/Theano/Theano/wiki/Related-projects
@@ -175,8 +180,8 @@ Community
 Help!
 =====
 
-How to seek help
----------------
+How to Seek Help
+----------------
 
 The appropriate venue for seeking help depends on the kind of question you have.
 
@@ -242,7 +247,6 @@ StackOverflow, follow their guidance for `answering questions <http://stackoverf
    glossary
    links
    internal/index
-   proposals/index
    acknowledgement
    LICENSE
 

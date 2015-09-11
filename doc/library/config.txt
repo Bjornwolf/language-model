@@ -370,6 +370,34 @@ import theano and print the config variable, as in:
     `amdlibm <http://developer.amd.com/cpu/libraries/libm/>`__
     library, which is faster than the standard libm.
 
+.. attribute:: config.lib.cnmem
+
+    Float value: >= 0
+
+    Do we enable `CNMeM <https://github.com/NVIDIA/cnmem>`_ or not (a
+    faster CUDA memory allocator). In Theano dev version until 0.7.1
+    is released.
+
+    That library is included in Theano, you do not need to install it.
+
+    The value represents the start size (in MB or % of total GPU
+    memory) of the memory pool. If more memory are needed, it will
+    try to get more, but this can cause more memory fragmentation:
+
+        * 0: not enabled.
+        * 0 < N <= 1: % of the total GPU memory (clipped to .985 for driver memory)
+        * > 0: use that number of MB of memory.
+
+
+    Default 0 (but should change later)
+
+    .. note::
+
+        This could cause memory fragmentation. So if you have a
+        memory error while using cnmem, try to allocate more memory at
+        the start or disable it. If you try this, report your result
+        on :ref`theano-dev`.
+
 .. attribute:: linker
 
     String value: 'c|py', 'py', 'c', 'c|py_nogc'
@@ -389,14 +417,18 @@ import theano and print the config variable, as in:
 
 .. attribute:: on_opt_error
 
-    String value: 'warn', 'raise' or 'pdb'
+    String value: 'warn', 'raise', 'pdb' or 'ignore'
 
     Default: 'warn'
 
     When a crash occurs while trying to apply some optimization, either warn
     the user and skip this optimization ('warn'), raise the exception
-    ('raise'), or fall into the pdb debugger ('pdb').
+    ('raise'), fall into the pdb debugger ('pdb') or ignore it ('ignore').
+    We suggest to never use 'ignore' except in tests.
 
+   If you encounter a warning, report it on `theano-dev`_.
+
+.. _theano-dev: http://groups.google.com/group/theano-dev
 
 .. attribute:: assert_no_cpu_op
 
@@ -509,22 +541,35 @@ import theano and print the config variable, as in:
 
 .. attribute:: config.dnn.conv.workmem
 
-   String value: 'none', 'small', 'large'
+   Deprecated, use dnn.conv.algo_fwd.
 
-   Default: 'small'
 
-   The default value for the amount of working memory that is
-   tolerated in the convolution implementation in cudnn.
+.. attribute:: config.dnn.conv.workmem_bwd
 
-   'none'
-     Don't allow any extra memory.
+   Deprecated, use dnn.conv.algo_bwd.
 
-   'small'
-     Allow extra memory that is much smaller than the input sizes.
+.. attribute:: config.dnn.conv.algo_fwd
 
-   'large'
-     Allow extra memory that is on the order of the input sizes.
+  String value: ``small``, ``none``, ``large``, ``fft``, ``guess_once``,
+                ``guess_on_shape_change``, ``time_once``,
+                ``time_on_shape_change``.
 
+   Default: ``small``
+
+   3d convolution only support ``none``, ``guess_once``,
+   ``guess_on_shape_change``, ``time_once``, ``time_on_shape_change``.
+
+
+.. attribute:: config.dnn.conv.algo_bwd
+
+   String value: ``none``, ``deterministic``, ``fft``, ``guess_once``,
+                 ``guess_on_shape_change``, ``time_once``,
+                 ``time_on_shape_change``.
+
+   Default: ``none``
+
+   3d convolution only support ``none``, ``guess_once``,
+   ``guess_on_shape_change``, ``time_once``, ``time_on_shape_change``.
 
 .. attribute:: config.gcc.cxxflags
 
@@ -673,6 +718,25 @@ import theano and print the config variable, as in:
     Generate a warning when the destroy_map or view_map tell that an op work
     inplace, but the op did not reuse the input for its output.
 
+.. attribute:: config.NanGuardMode.nan_is_error
+
+    Bool value, default: True
+
+    Controls whether NanGuardMode generates an error when it sees a nan.
+
+.. attribute:: config.NanGuardMode.inf_is_error
+
+    Bool value, default: True
+
+    Controls whether NanGuardMode generates an error when it sees an inf.
+
+.. attribute:: config.NanGuardMode.nan_is_error
+
+    Bool value, default: True
+
+    Controls whether NanGuardMode generates an error when it sees a
+    big value (>1e10).
+
 .. attribute:: numpy
 
     This section contains different attributes for configuring numpy's
@@ -779,7 +843,7 @@ import theano and print the config variable, as in:
 
 .. attribute:: reoptimize_unpickled_function
 
-    Bool value, default: True
+    Bool value, default: False (changed in master after Theano 0.7 release)
 
     Theano users can use the standard python pickle tools to save a compiled
     theano function. When pickling, both graph before and after the optimization

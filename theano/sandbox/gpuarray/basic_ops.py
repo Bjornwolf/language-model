@@ -47,7 +47,9 @@ def as_gpuarray(x):
 class Kernel(object):
     """
     This class groups together all the attributes of a gpu kernel.
+
     """
+
     def __init__(self, code, params, name, flags,
                  codevar=None, binvar=None, objvar=None):
         self.code = code
@@ -113,9 +115,9 @@ class Kernel(object):
 class GpuKernelBase(object):
     def gpu_kernels(self, node, name):
         """
-        This is the method to override.  This should return an
-        iterable of Kernel objects that describe the kernels this op
-        will need.
+        This is the method to override. This should return an iterable of Kernel
+        objects that describe the kernels this op will need.
+
         """
         raise MethodNotDefined('gpu_kernels')
 
@@ -141,6 +143,15 @@ class GpuKernelBase(object):
 
     def _generate_kernel_vars(self, k):
         return """static GpuKernel %(kname)s;""" % dict(kname=k.objvar)
+
+    def c_support_code(self):
+        return """
+        template <typename T>
+        static T ceil_intdiv(T a, T b)
+        {
+            return (a/b) + ((a % b) ? 1: 0);
+        }
+        """
 
     def c_support_code_apply(self, node, name):
         kernels = self.gpu_kernels(node, name)
@@ -323,15 +334,7 @@ gpu_from_host = GpuFromHost()
 
 class GpuFromCuda(Op):
     view_map = {0: [0]}
-
-    def __eq__(self, other):
-        return type(self) == type(other)
-
-    def __hash__(self):
-        return hash(type(self))
-
-    def __str__(self):
-        return 'GpuFromCuda'
+    __props__ = ()
 
     def make_node(self, x):
         from theano.sandbox.cuda import CudaNdarrayType
@@ -455,15 +458,7 @@ gpu_from_cuda = GpuFromCuda()
 
 class CudaFromGpu(Op):
     view_map = {0: [0]}
-
-    def __eq__(self, other):
-        return type(self) == type(other)
-
-    def __hash__(self):
-        return hash(type(self))
-
-    def __str__(self):
-        return 'CudaFromGpu'
+    __props__ = ()
 
     def make_node(self, x):
         from theano.sandbox.cuda import CudaNdarrayType
@@ -568,13 +563,20 @@ cuda_from_gpu = CudaFromGpu()
 
 
 class GpuAlloc(HideC, Alloc):
+    """
+
+    Parameters
+    ----------
+    memset_0
+        It's only an optimized version. True, it means the
+        value is always 0, so the c code call memset as it is faster.
+
+    """
+ 
     __props__ = ('memset_0',)
     _f16_ok = True
 
     def __init__(self, memset_0=False):
-        """memset_0 is only an optimized version. True, it mean the
-        value is always 0, so the c code call memset as it is faster.
-        """
         self.memset_0 = memset_0
 
     def __str__(self):
@@ -729,6 +731,8 @@ class GpuAllocEmpty(HideC, Alloc):
         sh, bcast = self.validate_shape(shape)
         output = GpuArrayType(dtype=self.dtype, broadcastable=bcast)()
         output.tag.values_eq_approx = tensor.type.values_eq_approx_always_true
+        # The outut can contain nan/inf.
+        output.type.filter_checks_isfinite = False
         return Apply(self, sh, [output])
 
     def perform(self, node, inputs, out_):
@@ -791,7 +795,9 @@ class GpuContiguous(Op):
     """
     Always return a c contiguous output. Copy the input only if it is
     not already c contiguous.
+ 
     """
+
     __props__ = ()
     view_map = {0: [0]}
     _f16_ok = True
@@ -849,7 +855,9 @@ gpu_contiguous = GpuContiguous()
 class GpuReshape(HideC, tensor.Reshape):
     """
     Implement Reshape on the gpu.
+
     """
+
     _f16_ok = True
 
     # __hash__, __eq__, __str__ come from tensor.Reshape
@@ -965,6 +973,7 @@ class GpuReshape(HideC, tensor.Reshape):
 
 
 class GpuJoin(HideC, Join):
+
     _f16_ok = True
 
     def make_node(self, axis, *tensors):

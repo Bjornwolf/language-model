@@ -59,6 +59,7 @@ from theano.tensor import (
 from theano.tensor.elemwise import DimShuffle
 from theano.tests import unittest_tools as utt
 from theano.compile.mode import optdb
+from theano.compile import Mode
 
 mode_opt = theano.config.mode
 if mode_opt == 'FAST_COMPILE':
@@ -4493,11 +4494,99 @@ class test_local_remove_switch_const_cond(unittest.TestCase):
 
 class T_local_sum_prod(unittest.TestCase):
     """
-    Test sum/prod opts in opt.py 
+    Test sum/prod opts in opt.py
     """
     def setUp(self):
         self.mode = theano.compile.get_default_mode().including('canonicalize',
                                                                 'specialize')
+
+    def test_local_sum_prod_mul_by_scalar(self):
+        # Test the optimization local_sum_prod_mul_by_scalar for both Sum and
+        # Prod ops in six cases each :
+        # 1-the inputs to the mul contain a scalar and no non-scalar
+        # 2-the inputs to the mul contain a scalar and one non-scalar
+        # 3-the inputs to the mul contain a scalar and two non-scalars
+        # 4-the inputs to the mul contain two scalars and no non-scalar
+        # 5-the inputs to the mul contain two scalars and one non-scalar
+        # 6-the inputs to the mul contain two scalars and two non-scalars
+
+        vect = T.dvector()
+        mat = T.dmatrix()
+        scalar1 = T.dscalar()
+        scalar2 = T.dscalar()
+
+        v_val = numpy.random.rand(2)
+        m_val = numpy.random.rand(2, 2)
+        s1_val = numpy.random.rand()
+        s2_val = numpy.random.rand()
+
+        def test_reduction_opt(inputs, inputs_val, reduction_op,
+                               expected_output, nb_expected_sum_nodes):
+            mul_out = T.mul(*inputs)
+            f = theano.function(inputs, reduction_op()(mul_out),
+                                mode=self.mode)
+            out = f(*inputs_val)
+            utt.assert_allclose(out, expected_output)
+
+            # Ensure that the optimization has been applied properly by
+            # ensuring that the optimized graph contains the expected number
+            # of apply nodes for the sum op
+            prod_nodes = [n for n in f.maker.fgraph.toposort()
+                             if isinstance(n.op, reduction_op)]
+            assert len(prod_nodes) == nb_expected_sum_nodes
+
+        # Test sum
+
+        # Case 1
+        test_reduction_opt([scalar1], [s1_val], T.Sum, s1_val, 0)
+
+        # Case 2
+        test_reduction_opt([vect, scalar1], [v_val, s1_val], T.Sum,
+                           s1_val * v_val.sum(), 1)
+
+        # Case 3
+        test_reduction_opt([vect, mat, scalar1], [v_val, m_val, s1_val], T.Sum,
+                           s1_val * (v_val * m_val).sum(), 1)
+
+        # Case 4
+        test_reduction_opt([scalar1, scalar2], [s1_val, s2_val], T.Sum,
+                           s1_val * s2_val, 0)
+
+        # Case 5
+        test_reduction_opt([vect, scalar1, scalar2], [v_val, s1_val, s2_val],
+                           T.Sum, s1_val * s2_val * v_val.sum(), 1)
+
+        # Case 6
+        test_reduction_opt([vect, mat, scalar1, scalar2],
+                           [v_val, m_val, s1_val, s2_val], T.Sum,
+                           s1_val * s2_val * (v_val * m_val).sum(), 1)
+
+        # Test prod
+
+        # Case 1
+        test_reduction_opt([scalar1], [s1_val], T.elemwise.Prod, s1_val, 0)
+
+        # Case 2
+        test_reduction_opt([vect, scalar1], [v_val, s1_val], T.elemwise.Prod,
+                           (s1_val * v_val).prod(), 2)
+
+        # Case 3
+        test_reduction_opt([vect, mat, scalar1], [v_val, m_val, s1_val],
+                           T.elemwise.Prod, (s1_val * v_val * m_val).prod(), 2)
+
+        # Case 4
+        test_reduction_opt([scalar1, scalar2], [s1_val, s2_val],
+                           T.elemwise.Prod, s1_val * s2_val, 0)
+
+        # Case 5
+        test_reduction_opt([vect, scalar1, scalar2], [v_val, s1_val, s2_val],
+                           T.elemwise.Prod, (s1_val * s2_val * v_val).prod(),
+                           2)
+
+        # Case 6
+        test_reduction_opt([vect, mat, scalar1, scalar2],
+                           [v_val, m_val, s1_val, s2_val], T.elemwise.Prod,
+                           (s1_val * s2_val * v_val * m_val).prod(), 2)
 
     def test_local_sum_prod_all_to_none(self):
         a = T.tensor3()
@@ -4831,7 +4920,7 @@ class T_local_reduce(unittest.TestCase):
             theano.config.warn.reduce_join = old
 
 
-class T_local_sum_dimshuffle(unittest.TestCase):
+class T_local_sum_prod_dimshuffle(unittest.TestCase):
     def setUp(self):
         self.mode = theano.compile.get_default_mode().including('canonicalize')
 
@@ -4898,6 +4987,104 @@ class T_local_sum_dimshuffle(unittest.TestCase):
         finally:
             config.warn.sum_sum_bug, config.warn.sum_div_dimshuffle_bug =\
                                                                         backup
+
+    def test_local_prod_div_dimshuffle(self):
+        a = T.matrix('a')
+        b = T.vector('b')
+        c = T.tensor3('c')
+        e = T.matrix('e')
+        d = T.scalar('d')
+        prod = T.prod
+        prods = [
+            prod(a / d),
+            prod(a / d.dimshuffle('x', 'x')),
+            prod(a / d.dimshuffle('x', 'x'), axis=0),
+            prod(a / d.dimshuffle('x', 'x'), axis=1),
+            prod(b / d),
+            prod(b / d.dimshuffle('x')),
+            prod(c / d),
+            prod(c / d.dimshuffle('x', 'x', 'x')),
+            prod(c / d.dimshuffle('x', 'x', 'x'), axis=0),
+            prod(c / d.dimshuffle('x', 'x', 'x'), axis=1),
+            prod(c / d.dimshuffle('x', 'x', 'x'), axis=2),
+
+            prod(a / b, axis=0),
+            prod(a / b.dimshuffle(0, 'x'), axis=1),
+            prod(a.dimshuffle(0, 1) / b.dimshuffle(0, 'x'), axis=1),
+            prod(a.dimshuffle(1, 0) / b.dimshuffle(0, 'x'), axis=1),
+            prod(c / a, axis=0),
+            prod(c / a.dimshuffle(1, 0), axis=0),
+            prod(c / a.dimshuffle(0, 'x', 1), axis=1),
+            prod(c / a.dimshuffle(1, 'x', 0), axis=1),
+            prod(c / a.dimshuffle(0, 1, 'x'), axis=2),
+            prod(c / a.dimshuffle(1, 0, 'x'), axis=2),
+            prod(c / b, axis=0),
+            prod(c / b, axis=1),
+            prod(c / b, axis=(0, 1)),
+            prod(c / b.dimshuffle(0, 'x'), axis=0),
+            prod(c / b.dimshuffle(0, 'x'), axis=2),
+            prod(c / b.dimshuffle(0, 'x'), axis=(0, 2)),
+            prod(c / b.dimshuffle(0, 'x', 'x'), axis=1),
+            prod(c / b.dimshuffle(0, 'x', 'x'), axis=2),
+            prod(c / b.dimshuffle(0, 'x', 'x'), axis=(1, 2)),
+            prod(c / b.dimshuffle(0, 'x', 'x'), axis=(0, 1)),
+            prod(c / b.dimshuffle(0, 'x', 'x'), axis=(1, 0)),
+            prod(prod(c, axis=0) / b, axis=0),
+            prod(prod(c, axis=1) / b, axis=0)]
+
+        rng = numpy.random.RandomState(utt.fetch_seed())
+        a_val = rng.randn(2, 2).astype(config.floatX)
+        b_val = rng.randn(2).astype(config.floatX)
+        c_val = rng.randn(2, 2, 2).astype(config.floatX)
+        d_val = numpy.asarray(rng.randn(), config.floatX)
+
+        default_mode = theano.compile.mode.get_default_mode()
+        # FusionOptimizer is included to make sure that expected_outer_operator
+        # remains the same for all optimization modes.
+        mode_with_opt = default_mode.including('local_sum_prod_div_dimshuffle',
+                                               'FusionOptimizer')
+        mode_without_opt = default_mode.excluding('local_sum_prod_div_dimshuffle')
+
+        # Numerical tests: tests whether the numerical values with and without
+        #                  optimizer are equal or not.
+        for i, s in enumerate(prods):
+            f = theano.function([a, b, c, d], s,
+                                on_unused_input='ignore',
+                                mode=mode_without_opt)
+            g = theano.function([a, b, c, d], s,
+                                on_unused_input='ignore',
+                                mode=mode_with_opt)
+
+            utt.assert_allclose(f(a_val, b_val, c_val, d_val),
+                                g(a_val, b_val, c_val, d_val))
+
+        # Logical tests: tests whether the optimizer has been appplied or not
+        #                by checking graph structure.
+        prods = [
+            prod(a / e),
+            prod(a / d),
+            prod(a / d.dimshuffle('x', 'x')),
+            prod(c / d.dimshuffle('x', 'x', 'x'), axis=1),
+            prod(a.dimshuffle(1, 0) / b.dimshuffle(0, 'x'), axis=1),
+            prod(c / b.dimshuffle(0, 'x', 'x'), axis=(1, 0)),
+            prod(prod(c, axis=1) / b, axis=0),
+            prod(prod(c, axis=(1, 2)) / b, axis=0)]
+
+        expected_outer_operator = [theano.scalar.basic.Mul,
+                                   theano.scalar.basic.Composite,
+                                   theano.scalar.basic.Composite,
+                                   theano.scalar.basic.TrueDiv,
+                                   theano.scalar.basic.Composite,
+                                   theano.scalar.basic.Mul,
+                                   theano.scalar.basic.Composite,
+                                   theano.scalar.basic.Mul]
+
+        for i, s in enumerate(prods):
+            g = theano.function([a, b, c, d, e], s,
+                                on_unused_input='ignore',
+                                mode=mode_with_opt)
+            assert isinstance(g.maker.fgraph.toposort()[-1].op.scalar_op,
+                              expected_outer_operator[i])
 
     # TODO:
     # test_local_sum_prod_dimshuffle (a * b * c)
@@ -5246,6 +5433,20 @@ def test_local_flatten_lift():
         assert isinstance(topo[1].op, tensor.Elemwise)
 
 
+class Test_Reshape(unittest.TestCase):
+    def setUp(self):
+        self.mode = mode_opt 
+        self.op = tensor.Reshape
+
+    def test_local_reshape(self):
+        a = tensor.fmatrix()
+        b = self.op(3)(a, [2, 3, 4])
+        c = self.op(1)(b, [24])
+        f = theano.function([a], c, mode=self.mode)
+        topo = f.maker.fgraph.toposort()
+        assert sum(isinstance(node.op, self.op) for node in topo) == 1
+
+
 def test_local_reshape_lift():
     x = tensor.tensor4()
     out = T.exp(x).reshape([x.size])
@@ -5420,7 +5621,7 @@ class TestIntDivByOne(unittest.TestCase):
                 if isinstance(node.op, T.elemwise.Elemwise) and
                 isinstance(node.op.scalar_op, theano.scalar.IntDiv)]
         assert len(divs) == 0
-    
+
     def test2(self):
         """Simple test case for removing dividing by 1"""
         y = T.tensor4('y')
