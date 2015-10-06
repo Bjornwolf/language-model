@@ -74,9 +74,11 @@ seq_gen.initialize()
 # z markov_tutorial
 x = tensor.lvector('features')
 x = x.reshape( (x.shape[0], 1) )
-cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1], name = "negative log-likelihood")
+cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
+cost.name = "negative log-likelihood"
 cost_cg = ComputationGraph(cost)
 
+print VariableFilter(roles=[WEIGHT])(cost_cg.variables)
 # theano.printing.pydotprint(cost, outfile="./pics/symbolic_graph_unopt.png", var_with_name_simple=True)
 
 algorithm = GradientDescent(
