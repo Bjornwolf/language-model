@@ -61,7 +61,7 @@ else:
    uc = open(unique_chars, 'w')
    pickle.dump(dictionary, uc)
    uc.close()
-
+print dictionary
 text_files = TextFile(files = files,
                       dictionary = dictionary,
                       bos_token = None,
