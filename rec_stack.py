@@ -62,24 +62,25 @@ else:
    pickle.dump(dictionary, uc)
    uc.close()
 
+files = map(lambda x: 'data/test/' + x, ['test1', 'test2', 'test3'])
+
 text_files = TextFile(files = files,
-                      dictionary = dictionary,
+                      dictionary = ['a', 'b', 'c'],
                       bos_token = None,
                       eos_token = None,
                       unk_token = '<UNK>',
                       level = 'character')
+
 alphabet_size = len(dictionary.keys())
 
-lstm_dim = 512
+lstm_dim = 2
 
 lstm1 = LSTM(dim=lstm_dim, use_bias=False,
             weights_init=Orthogonal())
 lstm2 = LSTM(dim=lstm_dim, use_bias=False,
             weights_init=Orthogonal())
-lstm3 = LSTM(dim=lstm_dim, use_bias=False,
-            weights_init=Orthogonal())
 
-rnn = RecurrentStack([lstm1, lstm2, lstm3],
+rnn = RecurrentStack([lstm1, lstm2],
                      name="transition")
 
 readout = Readout(readout_dim = alphabet_size,
@@ -91,7 +92,7 @@ readout = Readout(readout_dim = alphabet_size,
                   name="readout")
 
 seq_gen = SequenceGenerator(readout=readout,
-                            transition=lstm1,
+                            transition=transition,
                             weights_init=IsotropicGaussian(0.01),
                             biases_init=Constant(0),
                             name="generator")
