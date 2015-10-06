@@ -280,8 +280,8 @@ class SeqOptimizer(Optimizer, list):
         print((" time %.3fs for %d/%d nodes"
                " before/after optimization" % (
                    sum(prof), nb_node_before, nb_node_after)), file=stream)
-        print(blanc, "  %.3fs for fgraph.validate()" % (validate_time), file=stream)
         print(blanc, "  %.3fs for callback" % (callback_time), file=stream)
+        print(blanc, "      %.3fs for fgraph.validate()" % (validate_time), file=stream)
         if level == 0:
             print(blanc, "  time      - (name, class, index) - validate time", file=stream)
         ll = []
@@ -484,9 +484,11 @@ class MergeFeature(object):
         # signature -> variable (for constants)
         self.const_sig_inv = _metadict()
 
-        # For all variables
+        # For all Apply nodes
         # Set of distinct (not mergeable) nodes
         self.nodes_seen = set()
+        # Ordered set of distinct (not mergeable) nodes without any input
+        self.noinput_nodes = OrderedSet()
 
         # Each element of scheduled is a list of list of (out, new_out) pairs.
         # Each list of pairs represent the substitution needed to replace all
@@ -514,6 +516,10 @@ class MergeFeature(object):
             self.nodes_seen.discard(node)
             self.process_node(fgraph, node)
 
+        # Since we are in on_change_input, node should have inputs.
+        if not isinstance(node, string_types):
+            assert node.inputs
+
         if isinstance(new_r, graph.Constant):
             self.process_constant(fgraph, new_r)
 
@@ -526,6 +532,8 @@ class MergeFeature(object):
 
     def on_prune(self, fgraph, node, reason):
         self.nodes_seen.discard(node)
+        if not node.inputs:
+            self.noinput_nodes.discard(node)
         for c in node.inputs:
             if isinstance(c, graph.Constant) and (len(c.clients) <= 1):
                 # This was the last node using this constant
@@ -571,6 +579,7 @@ class MergeFeature(object):
         if node.inputs:
             assert len(node.inputs[0].clients) > 0
             assert (node, 0) in node.inputs[0].clients
+
             merge_candidates = [c for (c, i) in node.inputs[0].clients
                                 if c in self.nodes_seen]
 
@@ -592,7 +601,10 @@ class MergeFeature(object):
 
                     merge_candidates.extend(assert_clients)
         else:
-            merge_candidates = []
+            # If two nodes have no input, but perform the same operation,
+            # they are not always constant-folded, so we want to merge them.
+            # In that case, the candidates are all the nodes without inputs.
+            merge_candidates = self.noinput_nodes
 
         replacement_candidates = []
         for candidate in merge_candidates:
@@ -672,6 +684,8 @@ class MergeFeature(object):
             self.scheduled.append(replacement_candidates)
         else:
             self.nodes_seen.add(node)
+            if not node.inputs:
+                self.noinput_nodes.add(node)
 
     def get_merged_assert_input(self, node, candidate):
         new_inputs = []
@@ -796,6 +810,17 @@ class MergeOptimizer(Optimizer):
                     # No need to compare the op again, as it don't change.
                     if not inputs_match:
                         continue
+
+                    if hasattr(pairs[0][0].fgraph, 'destroy_handler'):
+                        # If both nodes have clients that destroy
+                        # them, we can't merge them.
+                        clients = pairs[0][0].clients + pairs[0][1].clients
+                        if sum([i in utils.flatten(c.op.destroy_map.values())
+                                for c, i in clients
+                                if c != 'output' and
+                                hasattr(c.op, 'destroy_map')]) > 1:
+                            continue
+
                 try:
                     fgraph.replace_all_validate(pairs, 'MergeOptimizer')
                 except InconsistencyError:
@@ -1609,13 +1634,14 @@ class NavigatorOptimizer(Optimizer):
 
     """
     @staticmethod
-    def warn(exc, nav, repl_pairs, local_opt):
+    def warn(exc, nav, repl_pairs, local_opt, node):
         """
         Failure_callback for NavigatorOptimizer: print traceback.
 
         """
         if config.on_opt_error != 'ignore':
             _logger.error("Optimization failure due to: %s" % str(local_opt))
+            _logger.error("node: %s" % str(node))
             _logger.error("TRACEBACK:")
             _logger.error(traceback.format_exc())
         if config.on_opt_error == 'pdb':
@@ -1626,19 +1652,21 @@ class NavigatorOptimizer(Optimizer):
             raise exc
 
     @staticmethod
-    def warn_inplace(exc, nav, repl_pairs, local_opt):
+    def warn_inplace(exc, nav, repl_pairs, local_opt, node):
         """
         Failure_callback for NavigatorOptimizer.
 
         Ignore InconsistencyErrors, print traceback.
 
+        If error during replacement repl_pairs is set. Otherwise None.
+
         """
         if isinstance(exc, InconsistencyError):
             return
-        return NavigatorOptimizer.warn(exc, nav, repl_pairs, local_opt)
+        return NavigatorOptimizer.warn(exc, nav, repl_pairs, local_opt, node)
 
     @staticmethod
-    def warn_ignore(exc, nav, repl_pairs, local_opt):
+    def warn_ignore(exc, nav, repl_pairs, local_opt, node):
         """
         Failure_callback for NavigatorOptimizer: ignore all errors.
 
@@ -1739,7 +1767,7 @@ class NavigatorOptimizer(Optimizer):
             if self.failure_callback is not None:
                 self.failure_callback(e, self,
                                       [(x, None) for x in node.outputs],
-                                      lopt)
+                                      lopt, node)
                 return False
             else:
                 raise
@@ -1777,7 +1805,7 @@ class NavigatorOptimizer(Optimizer):
             # This is not supposed to happen.  The default failure_callback
             # will print a traceback as a warning.
             if self.failure_callback is not None:
-                self.failure_callback(e, self, repl_pairs, lopt)
+                self.failure_callback(e, self, repl_pairs, lopt, node)
                 return False
             else:
                 raise
@@ -2217,7 +2245,7 @@ class EquilibriumOptimizer(NavigatorOptimizer):
         process_count = {}
         for o in (opt.global_optimizers +
                   list(opt.get_local_optimizers()) +
-                  opt.final_optimizers):
+                  list(opt.final_optimizers)):
             process_count.setdefault(o, 0)
         for count in loop_process_count:
             for o, v in iteritems(count):
@@ -2246,7 +2274,8 @@ class EquilibriumOptimizer(NavigatorOptimizer):
                     # Skip opt that have 0 times, they probably wasn't even tried.
                     print(blanc + "  ", '  %.3fs - %s' % (t, o), file=stream)
             print(file=stream)
-        gf_opts = [o for o in opt.global_optimizers + opt.final_optimizers
+        gf_opts = [o for o in (opt.global_optimizers +
+                               list(opt.final_optimizers))
                    if o.print_profile.func_code is not
                    Optimizer.print_profile.func_code]
         if not gf_opts:
