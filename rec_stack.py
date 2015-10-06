@@ -27,21 +27,21 @@ from fuel.datasets import Dataset, TextFile
 from fuel.streams import DataStream
 from fuel_test import get_unique_chars
 
-#TODO rozszerzenie recurrentstack na reset stanu
-#TODO przerobic na klase
+
 save_path = 'rst_dump.thn'
 num_batches = 50
 
 files = map(lambda x: 'data/test/' + x, ['test1', 'test2', 'test3'])
+print files
 
 text_files = TextFile(files = files,
-                      dictionary = ['a', 'b', 'c'],
+                      dictionary = {'a': 1, 'b': 2, 'c': 3, '<UNK>': 4},
                       bos_token = None,
                       eos_token = None,
                       unk_token = '<UNK>',
                       level = 'character')
 
-alphabet_size = len(dictionary.keys())
+alphabet_size = 4
 
 lstm_dim = 2
 
@@ -62,7 +62,7 @@ readout = Readout(readout_dim = alphabet_size,
                   name="readout")
 
 seq_gen = SequenceGenerator(readout=readout,
-                            transition=transition,
+                            transition=rnn,
                             weights_init=IsotropicGaussian(0.01),
                             biases_init=Constant(0),
                             name="generator")
@@ -74,8 +74,7 @@ seq_gen.initialize()
 # z markov_tutorial
 x = tensor.lvector('features')
 x = x.reshape( (x.shape[0], 1) )
-cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
-cost.name = "sequence_log_likelihood"
+cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1], name = "negative log-likelihood")
 cost_cg = ComputationGraph(cost)
 
 # theano.printing.pydotprint(cost, outfile="./pics/symbolic_graph_unopt.png", var_with_name_simple=True)
