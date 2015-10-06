@@ -29,38 +29,8 @@ from fuel_test import get_unique_chars
 
 #TODO rozszerzenie recurrentstack na reset stanu
 #TODO przerobic na klase
-save_path = 'rnn_dump.thn'
-num_batches = 2000000
-pickled_filenames = 'pickled_filenames.pkl'
-unique_chars = 'charset.pkl'
-
-if os.path.isfile(pickled_filenames):
-   pf = open(pickled_filenames, 'r')
-   files = pickle.load(pf)
-   pf.close()
-else:
-   files = []
-   data_location = 'data/plwiki/'
-   for (dirname, _, filenames) in os.walk(data_location):
-      files += map(lambda x: dirname + '/' + x, filenames)
-   os.system('touch ' + pickled_filenames)
-   pf = open(pickled_filenames, 'w')
-   pickle.dump(files, pf)
-   pf.close()
-
-print len(files), ' files on the list'
-
-# files = ['data/plwiki/art' + str(i) for i in range(1, 500)]
-if os.path.isfile(unique_chars):
-   uc = open(unique_chars, 'r')
-   dictionary = pickle.load(uc)
-   uc.close()
-else:
-   dictionary = get_unique_chars(files)
-   os.system('touch ' + unique_chars)
-   uc = open(unique_chars, 'w')
-   pickle.dump(dictionary, uc)
-   uc.close()
+save_path = 'rst_dump.thn'
+num_batches = 50
 
 files = map(lambda x: 'data/test/' + x, ['test1', 'test2', 'test3'])
 
