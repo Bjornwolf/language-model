@@ -280,7 +280,8 @@ class _tensor_py_operators:
 
     shape = property(lambda self: theano.tensor.basic.shape(self))
 
-    size = property(lambda self: theano.tensor.basic.prod(self.shape))
+    size = property(lambda self: self.shape[0] if self.ndim == 1 else
+                    theano.tensor.basic.prod(self.shape))
 
     # We can't implement __len__ to provide a better error message.
     def any(self, axis=None, keepdims=False):
@@ -520,8 +521,11 @@ class _tensor_py_operators:
         return theano.tensor.subtensor.take(self, indices, axis, mode)
 
     # COPYING
-    def copy(self):
-        return theano.tensor.basic.tensor_copy(self)
+    def copy(self, name=None):
+        """Copy a variable and optionally assign a name."""
+        copied_variable = theano.tensor.basic.tensor_copy(self)
+        copied_variable.name = name
+        return copied_variable
 
     def __iter__(self):
         try:

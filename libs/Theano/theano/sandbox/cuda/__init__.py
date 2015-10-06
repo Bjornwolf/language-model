@@ -404,7 +404,11 @@ def use(device,
             pycuda_init_dev = theano.misc.pycuda_init.pycuda_available
 
         try:
-            if (device != 'gpu') and not pycuda_init_dev:
+            if pycuda_init_dev:
+                use.device_number = active_device_number()
+                # This is needed to initialize the cublas handle.
+                gpu_init(use.device_number, config.lib.cnmem)
+            elif(device != 'gpu'):
                 assert isinstance(device, int)
                 gpu_init(device, config.lib.cnmem)
                 use.device_number = device
@@ -531,7 +535,7 @@ def handle_shared_float32(tf):
 # import dependency. So we also test it in the file theano/__init__.py
 if config.device.startswith('gpu'):
     use(device=config.device, force=config.force_device, test_driver=False)
-elif config.init_gpu_device:
+elif config.init_gpu_device.startswith('gpu'):
     assert config.device == "cpu", (
         "We can use the Theano flag init_gpu_device"
         " only when the Theano flag device=='cpu'")

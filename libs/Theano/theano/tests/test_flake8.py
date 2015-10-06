@@ -20,7 +20,7 @@ __contact__ = "Saizheng Zhang <saizhenglisa..at..gmail.com>"
 # We ignore:
 # - "line too long"
 #    too complex to do with the C code
-# - "closing bracket does not match indentation of opening bracket’s line"
+# - "closing bracket does not match indentation of opening bracket's line"
 #    ignored by default by pep8
 ignore = ('E501', 'E123', 'E133')
 
@@ -30,7 +30,6 @@ whitelist_flake8 = [
     "tests/test_gradient.py",
     "tests/test_config.py",
     "tests/diverse_tests.py",
-    "tests/test_ifelse.py",
     "tests/test_rop.py",
     "tests/test_2nd_order_grads.py",
     "tests/run_tests_in_batch.py",
@@ -139,7 +138,6 @@ whitelist_flake8 = [
     "sandbox/cuda/tests/test_blas.py",
     "sandbox/cuda/tests/test_driver.py",
     "sandbox/cuda/tests/test_rng_curand.py",
-    "sandbox/cuda/tests/test_nnet.py",
     "sandbox/cuda/tests/test_basic_ops.py",
     "sandbox/cuda/tests/test_memory.py",
     "sandbox/cuda/tests/test_mlp.py",
@@ -159,26 +157,11 @@ whitelist_flake8 = [
     "sandbox/linalg/ops.py",
     "sandbox/linalg/__init__.py",
     "sandbox/linalg/tests/test_linalg.py",
-    "sandbox/gpuarray/basic_ops.py",
-    "sandbox/gpuarray/nnet.py",
-    "sandbox/gpuarray/subtensor.py",
-    "sandbox/gpuarray/elemwise.py",
-    "sandbox/gpuarray/type.py",
     "sandbox/gpuarray/__init__.py",
-    "sandbox/gpuarray/blas.py",
-    "sandbox/gpuarray/kernel_codegen.py",
-    "sandbox/gpuarray/conv.py",
-    "sandbox/gpuarray/neighbours.py",
     "sandbox/gpuarray/tests/test_subtensor.py",
     "sandbox/gpuarray/tests/test_scan.py",
-    "sandbox/gpuarray/tests/test_neighbours.py",
-    "sandbox/gpuarray/tests/test_conv_cuda_ndarray.py",
-    "sandbox/gpuarray/tests/test_type.py",
     "sandbox/gpuarray/tests/test_opt.py",
-    "sandbox/gpuarray/tests/test_blas.py",
     "sandbox/gpuarray/tests/test_elemwise.py",
-    "sandbox/gpuarray/tests/test_nnet.py",
-    "sandbox/gpuarray/tests/test_basic_ops.py",
     "scan_module/scan_utils.py",
     "scan_module/scan_views.py",
     "scan_module/scan.py",
@@ -208,6 +191,9 @@ whitelist_flake8 = [
     "gof/unify.py",
     "gof/__init__.py",
     "gof/sandbox/equilibrium.py",
+    "d3viz/__init__.py",
+    "d3viz/tests/test_d3viz.py",
+    "d3viz/tests/test_formatting.py"
 ]
 
 

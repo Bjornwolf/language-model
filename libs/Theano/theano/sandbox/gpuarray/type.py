@@ -36,7 +36,7 @@ class GpuArrayType(Type):
         return self.__class__(dtype=dtype, broadcastable=broadcastable,
                               name=self.name)
 
-    def __str__(self):
+    def __repr__(self):
         return "GpuArrayType(%s, %s)" % (self.dtype, self.broadcastable)
 
     def filter(self, data, strict=False, allow_downcast=None):
@@ -162,13 +162,7 @@ class GpuArrayType(Type):
                 return tensor.TensorType.values_eq_approx(
                     an, bn, allow_remove_inf=allow_remove_inf,
                     allow_remove_nan=allow_remove_nan, rtol=rtol, atol=atol)
-            narrow = 'float32', 'complex64'
-            if (str(a.dtype) in narrow) or (str(b.dtype) in narrow):
-                atol_ = theano.tensor.basic.float32_atol
-                rtol_ = theano.tensor.basic.float32_rtol
-            else:
-                atol_ = theano.tensor.basic.float64_atol
-                rtol_ = theano.tensor.basic.float64_rtol
+            atol_, rtol_ = theano.tensor.basic._get_atol_rtol(a, b)
             if rtol is not None:
                 rtol_ = rtol
             if atol is not None:
@@ -190,7 +184,7 @@ class GpuArrayType(Type):
     @staticmethod
     def may_share_memory(a, b):
         if (not isinstance(a, gpuarray.GpuArray) or
-               not isinstance(b, gpuarray.GpuArray)):
+                not isinstance(b, gpuarray.GpuArray)):
             return False
         return pygpu.gpuarray.may_share_memory(a, b)
 
@@ -206,11 +200,12 @@ class GpuArrayType(Type):
                 self.broadcastable == other.broadcastable)
 
     def convert_variable(self, var):
-        if (type(self) == type(var.type) and
-                self.typecode == var.type.typecode and
-                self.ndim == var.type.ndim and
+        vt = var.type
+        if (type(self) == type(vt) and
+                self.typecode == vt.typecode and
+                self.ndim == vt.ndim and
                 all(sb == ob or ob for sb, ob in zip(self.broadcastable,
-                                                     var.type.broadcastable))):
+                                                     vt.broadcastable))):
             return theano.tensor.patternbroadcast(var, self.broadcastable)
 
     def __hash__(self):

@@ -201,24 +201,24 @@ class Scalar(Type):
     def values_eq_approx(self, a, b, tolerance=1e-4):
         return abs(a - b) <= ((abs(a) + abs(b)) * tolerance)
 
-    def c_headers(self):
+    def c_headers(self, c_compiler):
         l = ['<math.h>']
         # These includes are needed by Scalar and TensorType,
         # we declare them here and they will be re-used by TensorType
         l.append('<numpy/arrayobject.h>')
         l.append('<numpy/arrayscalars.h>')
-        if config.lib.amdlibm:
+        if config.lib.amdlibm and c_compiler.supports_amdlibm:
             l += ['<amdlibm.h>']
         return l
 
-    def c_libraries(self):
+    def c_libraries(self, c_compiler):
         l = []
-        if config.lib.amdlibm:
+        if config.lib.amdlibm and c_compiler.supports_amdlibm:
             l += ['amdlibm']
         return l
 
-    def c_compile_args(self):
-        if config.lib.amdlibm:
+    def c_compile_args(self, c_compiler):
+        if config.lib.amdlibm and c_compiler.supports_amdlibm:
             return ['-DREPLACE_WITH_AMDLIBM']
         else:
             return []
@@ -2003,6 +2003,18 @@ class Cast(UnaryScalarOp):
     def __str__(self):
         return '%s{%s}' % (self.__class__.__name__, self.o_type.dtype)
 
+    def make_new_inplace(self, output_types_preference=None, name=None):
+        """
+        This op.__init__ fct don't have the same parameter as other scalar op.
+        This breaks the insert_inplace_optimizer optimization.
+        This function is a fix to patch this, by ignoring the
+        output_types_preference passed by the optimization, and replacing it
+        by the current output type. This should only be triggered when
+        both input and output have the same dtype anyway.
+
+        """
+        return self.__class__(self.o_type, name)
+
     def impl(self, input):
         return self.ctor(input)
 
@@ -3329,6 +3341,8 @@ class Composite(ScalarOp):
     Composite depends on all the Ops in its graph having C code.
 
     """
+    init_param = ('inputs', 'outputs')
+
     def __str__(self):
         return self.name
 
@@ -3339,7 +3353,8 @@ class Composite(ScalarOp):
         This fct allow fix patch this.
 
         """
-        out = self.__class__(self.inputs, self.outputs)
+        d = dict([(k, getattr(self, k)) for k in self.init_param])
+        out = self.__class__(**d)
         if name:
             out.name = name
         else:
