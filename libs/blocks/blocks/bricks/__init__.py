@@ -586,7 +586,7 @@ class Softmax(Brick):
         """
         x = self.log_probabilities(x)
         application_call.add_auxiliary_variable(
-            named_copy(x, 'log_probabilities'))
+            x.copy(name='log_probabilities'))
         if y.ndim == x.ndim - 1:
             indices = tensor.arange(y.shape[0]) * x.shape[1] + y
             cost = -x.flatten()[indices]

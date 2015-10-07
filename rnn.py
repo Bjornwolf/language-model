@@ -1,3 +1,5 @@
+import os
+import pickle
 import numpy
 import theano
 import blocks
@@ -11,7 +13,7 @@ from blocks.initialization import Orthogonal, IsotropicGaussian, Constant
 from blocks.model import Model
 from blocks.monitoring import aggregation
 from blocks.graph import ComputationGraph
-from blocks.extensions import FinishAfter, Printing
+from blocks.extensions import FinishAfter, Printing, Timing
 from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.main_loop import MainLoop
@@ -28,11 +30,38 @@ from fuel_test import get_unique_chars
 #TODO rozszerzenie recurrentstack na reset stanu
 #TODO przerobic na klase
 save_path = 'rnn_dump.thn'
-num_batches = 10000
+num_batches = 2000000
+pickled_filenames = 'pickled_filenames.pkl'
+unique_chars = 'charset.pkl'
 
+if os.path.isfile(pickled_filenames):
+   pf = open(pickled_filenames, 'r')
+   files = pickle.load(pf)
+   pf.close()
+else:
+   files = []
+   data_location = 'data/plwiki/'
+   for (dirname, _, filenames) in os.walk(data_location):
+      files += map(lambda x: dirname + '/' + x, filenames)
+   os.system('touch ' + pickled_filenames)
+   pf = open(pickled_filenames, 'w')
+   pickle.dump(files, pf)
+   pf.close()
 
-files = ['data/plwiki/art' + str(i) for i in range(1, 500)]
-dictionary = get_unique_chars(files)
+print len(files), ' files on the list'
+
+# files = ['data/plwiki/art' + str(i) for i in range(1, 500)]
+if os.path.isfile(unique_chars):
+   uc = open(unique_chars, 'r')
+   dictionary = pickle.load(uc)
+   uc.close()
+else:
+   dictionary = get_unique_chars(files)
+   os.system('touch ' + unique_chars)
+   uc = open(unique_chars, 'w')
+   pickle.dump(dictionary, uc)
+   uc.close()
+print dictionary
 text_files = TextFile(files = files,
                       dictionary = dictionary,
                       bos_token = None,
@@ -62,7 +91,7 @@ readout = Readout(readout_dim = alphabet_size,
                   name="readout")
 
 seq_gen = SequenceGenerator(readout=readout,
-                            transition=rnn,
+                            transition=lstm1,
                             weights_init=IsotropicGaussian(0.01),
                             biases_init=Constant(0),
                             name="generator")
@@ -76,40 +105,41 @@ x = tensor.lvector('features')
 x = x.reshape( (x.shape[0], 1) )
 cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
 cost.name = "sequence_log_likelihood"
-
-cg_variables = ComputationGraph(cost).variables
-print "ZMIENNE W LSTM1"
-print VariableFilter(roles=[WEIGHT], bricks=[lstm1])(cg_variables)
-print "ZMIENNE W LSTM2"
-print VariableFilter(roles=[WEIGHT], bricks=[lstm2])(cg_variables)
-print "ZMIENNE W LSTM3"
-print VariableFilter(roles=[WEIGHT], bricks=[lstm3])(cg_variables)
-print "ZMIENNE RAZEM W RNN"
-print VariableFilter(roles=[WEIGHT], bricks=[rnn])(cg_variables)
+cost_cg = ComputationGraph(cost)
 
 # theano.printing.pydotprint(cost, outfile="./pics/symbolic_graph_unopt.png", var_with_name_simple=True)
-
-variables = VariableFilter(roles=[WEIGHT], bricks=[lstm1])(cg_variables)
-for var in variables:
-    print var.owner
-
 
 algorithm = GradientDescent(
                 cost=cost,
                 parameters=list(Selector(seq_gen).get_parameters().values()),
                 step_rule=Scale(0.001))
 
+# AUDIOSCOPE OBSERVABLES (some)
+observables = []
+observables += cost_cg.outputs
+observables.append(algorithm.total_step_norm)
+observables.append(algorithm.total_gradient_norm)
+
+print observables
+
+# AUDIOSCOPE EXTENSIONS
+extensions = []
+extensions.append(Timing(after_batch=True))
+extensions.append(TrainingDataMonitoring(list(observables), after_batch=True))
+averaging_frequency = 1000
+average_monitor = TrainingDataMonitoring(observables, prefix="average", every_n_batches=averaging_frequency)
+extensions.append(average_monitor)
+checkpointer = Checkpoint(save_path, every_n_batches=500, use_cpickle=True)
+extensions.append(checkpointer)
+extensions.append(Printing(every_n_batches=10))
+
+
+
 main_loop = MainLoop(
                 algorithm=algorithm,
                 data_stream=DataStream(text_files),
                 model=Model(cost),
-                extensions=[Checkpoint(save_path, every_n_batches=500),
-                            Printing(every_n_batches=100),
-                            TrainingDataMonitoring([cost], prefix="this_step",
-                                                   after_batch=True),
-                            TrainingDataMonitoring([cost], prefix="average",
-                                                   every_n_batches=100),
-                            FinishAfter(after_n_batches=num_batches)])
+                extensions=extensions)
 
 main_loop.run()
 
