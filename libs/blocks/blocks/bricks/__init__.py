@@ -12,7 +12,7 @@ from blocks.config import config
 from blocks.bricks.base import application, _Brick, Brick, lazy
 from blocks.bricks.wrappers import WithExtraDims
 from blocks.roles import add_role, WEIGHT, BIAS
-from blocks.utils import pack, shared_floatx_nans, named_copy
+from blocks.utils import pack, shared_floatx_nans
 
 logger = logging.getLogger(__name__)
 

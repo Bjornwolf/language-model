@@ -7,7 +7,7 @@ from blocks.bricks import Tanh
 from blocks.algorithms import GradientDescent, Scale
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent import RecurrentStack
-from blocks.bricks.sequence_generators import (SequenceGenerator, 
+from blocks.bricks.sequence_generators import (SequenceGenerator,
         Readout, SoftmaxEmitter, LookupFeedback)
 from blocks.initialization import Orthogonal, IsotropicGaussian, Constant
 from blocks.model import Model
@@ -83,7 +83,7 @@ rnn = RecurrentStack([lstm1, lstm2, lstm3],
                      name="transition")
 
 readout = Readout(readout_dim = alphabet_size,
-                  source_names=["states"],
+                  source_names=["states#2"],
                   emitter=SoftmaxEmitter(name="emitter"),
                   feedback_brick=LookupFeedback(alphabet_size,
                                                 feedback_dim=alphabet_size,
@@ -91,7 +91,7 @@ readout = Readout(readout_dim = alphabet_size,
                   name="readout")
 
 seq_gen = SequenceGenerator(readout=readout,
-                            transition=lstm1,
+                            transition=rnn,
                             weights_init=IsotropicGaussian(0.01),
                             biases_init=Constant(0),
                             name="generator")
