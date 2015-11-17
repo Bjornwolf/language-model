@@ -4,10 +4,10 @@ import numpy
 import theano
 import blocks
 from blocks.bricks import Tanh
-from blocks.algorithms import GradientDescent, Scale
+from blocks.algorithms import GradientDescent, Scale, AdaDelta
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent import RecurrentStack
-from blocks.bricks.sequence_generators import (SequenceGenerator, 
+from blocks.bricks.sequence_generators import (SequenceGenerator,
         Readout, SoftmaxEmitter, LookupFeedback)
 from blocks.initialization import Orthogonal, IsotropicGaussian, Constant
 from blocks.model import Model
@@ -27,34 +27,63 @@ from fuel.datasets import Dataset, TextFile
 from fuel.streams import DataStream
 from fuel_test import get_unique_chars
 
+#TODO rozszerzenie recurrentstack na reset stanu
+#TODO przerobic na klase
+save_path = 'rnn_dump_bl.thn'
+num_batches = 2000000
+pickled_filenames = 'pickled_filenames_bl.pkl'
+unique_chars = 'charset_bl.pkl'
 
-save_path = 'rst_dump.thn'
-num_batches = 50
+if os.path.isfile(pickled_filenames):
+   pf = open(pickled_filenames, 'r')
+   files = pickle.load(pf)
+   pf.close()
+else:
+   files = []
+   data_location = 'data/bl/'
+   for (dirname, _, filenames) in os.walk(data_location):
+      files += map(lambda x: dirname + '/' + x, filenames)
+   os.system('touch ' + pickled_filenames)
+   pf = open(pickled_filenames, 'w')
+   pickle.dump(files, pf)
+   pf.close()
 
-files = map(lambda x: 'data/test/' + x, ['test1', 'test2', 'test3'])
-print files
+print len(files), ' files on the list'
 
+# files = ['data/plwiki/art' + str(i) for i in range(1, 500)]
+if os.path.isfile(unique_chars):
+   uc = open(unique_chars, 'r')
+   dictionary = pickle.load(uc)
+   uc.close()
+else:
+   dictionary = get_unique_chars(files)
+   os.system('touch ' + unique_chars)
+   uc = open(unique_chars, 'w')
+   pickle.dump(dictionary, uc)
+   uc.close()
+print dictionary
 text_files = TextFile(files = files,
-                      dictionary = {'a': 1, 'b': 2, 'c': 3, '<UNK>': 4},
+                      dictionary = dictionary,
                       bos_token = None,
                       eos_token = None,
                       unk_token = '<UNK>',
                       level = 'character')
+alphabet_size = len(dictionary.keys())
 
-alphabet_size = 4
+lstm_dim = 512
 
-lstm_dim = 2
-
-# lstm1 = LSTM(dim=lstm_dim, use_bias=False,
-#             weights_init=Orthogonal())
+lstm1 = LSTM(dim=lstm_dim, use_bias=False,
+            weights_init=Orthogonal())
 lstm2 = LSTM(dim=lstm_dim, use_bias=False,
             weights_init=Orthogonal())
+lstm3 = LSTM(dim=lstm_dim, use_bias=False,
+            weights_init=Orthogonal())
 
-# rnn = RecurrentStack([lstm1, lstm2],
-#                      name="transition")
+rnn = RecurrentStack([lstm1, lstm2, lstm3],
+                     name="transition")
 
 readout = Readout(readout_dim = alphabet_size,
-                  source_names=["states"],
+                  source_names=["states#2"],
                   emitter=SoftmaxEmitter(name="emitter"),
                   feedback_brick=LookupFeedback(alphabet_size,
                                                 feedback_dim=alphabet_size,
@@ -62,31 +91,28 @@ readout = Readout(readout_dim = alphabet_size,
                   name="readout")
 
 seq_gen = SequenceGenerator(readout=readout,
-                            transition=lstm2,
+                            transition=rnn,
                             weights_init=IsotropicGaussian(0.01),
                             biases_init=Constant(0),
                             name="generator")
 
 seq_gen.push_initialization_config()
-# rnn.weights_init = Orthogonal()
+rnn.weights_init = Orthogonal()
 seq_gen.initialize()
 
 # z markov_tutorial
 x = tensor.lvector('features')
 x = x.reshape( (x.shape[0], 1) )
 cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
-cost.name = "negative log-likelihood"
+cost.name = "sequence_log_likelihood"
 cost_cg = ComputationGraph(cost)
 
-for var in VariableFilter(roles=[WEIGHT])(cost_cg.variables):
-    print var
-    print var.owner
 # theano.printing.pydotprint(cost, outfile="./pics/symbolic_graph_unopt.png", var_with_name_simple=True)
 
 algorithm = GradientDescent(
                 cost=cost,
                 parameters=list(Selector(seq_gen).get_parameters().values()),
-                step_rule=Scale(0.001))
+                step_rule=AdaDelta())
 
 # AUDIOSCOPE OBSERVABLES (some)
 observables = []
@@ -105,7 +131,7 @@ average_monitor = TrainingDataMonitoring(observables, prefix="average", every_n_
 extensions.append(average_monitor)
 checkpointer = Checkpoint(save_path, every_n_batches=500, use_cpickle=True)
 extensions.append(checkpointer)
-extensions.append(Printing(every_n_batches=10))
+extensions.append(Printing(every_n_batches=50))
 
 
 

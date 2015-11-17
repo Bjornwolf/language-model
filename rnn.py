@@ -4,7 +4,7 @@ import numpy
 import theano
 import blocks
 from blocks.bricks import Tanh
-from blocks.algorithms import GradientDescent, Scale
+from blocks.algorithms import GradientDescent, Scale, AdaDelta
 from blocks.bricks.recurrent import LSTM
 from blocks.bricks.recurrent import RecurrentStack
 from blocks.bricks.sequence_generators import (SequenceGenerator,
@@ -29,10 +29,10 @@ from fuel_test import get_unique_chars
 
 #TODO rozszerzenie recurrentstack na reset stanu
 #TODO przerobic na klase
-save_path = 'rnn_dump.thn'
+save_path = 'rnn_dump_1g.thn'
 num_batches = 2000000
-pickled_filenames = 'pickled_filenames.pkl'
-unique_chars = 'charset.pkl'
+pickled_filenames = 'pickled_filenames_1g.pkl'
+unique_chars = 'charset_1g.pkl'
 
 if os.path.isfile(pickled_filenames):
    pf = open(pickled_filenames, 'r')
@@ -40,7 +40,7 @@ if os.path.isfile(pickled_filenames):
    pf.close()
 else:
    files = []
-   data_location = 'data/plwiki/'
+   data_location = 'data/plwiki_1g/train/'
    for (dirname, _, filenames) in os.walk(data_location):
       files += map(lambda x: dirname + '/' + x, filenames)
    os.system('touch ' + pickled_filenames)
@@ -112,7 +112,7 @@ cost_cg = ComputationGraph(cost)
 algorithm = GradientDescent(
                 cost=cost,
                 parameters=list(Selector(seq_gen).get_parameters().values()),
-                step_rule=Scale(0.001))
+                step_rule=AdaDelta())
 
 # AUDIOSCOPE OBSERVABLES (some)
 observables = []
@@ -131,7 +131,7 @@ average_monitor = TrainingDataMonitoring(observables, prefix="average", every_n_
 extensions.append(average_monitor)
 checkpointer = Checkpoint(save_path, every_n_batches=500, use_cpickle=True)
 extensions.append(checkpointer)
-extensions.append(Printing(every_n_batches=10))
+extensions.append(Printing(every_n_batches=50))
 
 
 
