@@ -3,6 +3,7 @@ import pickle
 import numpy
 import theano
 import blocks
+import math
 from blocks.bricks import Tanh
 from blocks.algorithms import GradientDescent, Scale, AdaDelta
 from blocks.bricks.recurrent import LSTM
@@ -114,8 +115,8 @@ seq_gen.initialize()
 
 x = tensor.lvector('features')
 x = x.reshape( (x.shape[0], 1) )
-cost = aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
-cost.name = "sequence_log_likelihood"
+cost = math.log(math.e, 2) * aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
+cost.name = "bits_per_character"
 cost_cg = ComputationGraph(cost)
 
 algorithm = GradientDescent(
@@ -127,9 +128,7 @@ observables = []
 observables += cost_cg.outputs
 observables.append(algorithm.total_step_norm)
 observables.append(algorithm.total_gradient_norm)
-perplexity = numpy.exp(aggregation.mean(cost * files_no , signs_no))
-perplexity.name = "perplexity"
-observables.append(perplexity)
+
 print "OBSERVABLES"
 print observables
 
