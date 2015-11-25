@@ -2,11 +2,12 @@ from fuel.datasets import Dataset, TextFile
 from fuel.streams import DataStream
 #import dill as pickle
 import pickle
+import codecs
 
 def get_unique_chars(filelist):
     letters = set('')
     for path in filelist:
-        f = open(path, 'r')
+        f = codecs.open(path, 'r')
         line = '^'
         while line != '':
             line = f.readline()
