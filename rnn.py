@@ -28,16 +28,16 @@ from fuel_test import get_unique_chars
 
 testing = False
 
-num_batches = 10
+num_batches = 30
 if not testing:
-   pickled_filenames = 'pickled_filenames_1g.pkl'
-   unique_chars = 'charset_1g.pkl'
-   save_path = 'rnn_dump_1g.thn'
+   pickled_filenames = 'pickled_filenames_1gu.pkl'
+   unique_chars = 'charset_1gu.pkl'
+   save_path = 'rnn_dump_1gu.thn'
 else:
    pickled_filenames = 'pickled_filenames_toy.pkl'
    unique_chars = 'charset_toy.pkl'
    save_path = 'rnn_dump_toy.thn'
-data_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1g/'
+data_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1gu/'
 lstm_dim = 512
 
 def switch_first_two_axes(batch):
@@ -154,12 +154,14 @@ seq_gen.initialize()
 print "SEQ_GEN PASSED"
 
 cost_matrix = seq_gen.cost_matrix(x, mask=mask)
+# BATCHE X CZAS
+# ostatnie 200 to cost_matrix[:,-200:]
 # print x.tag.test_value
 # print mask.tag.test_value
 # print mask.tag.test_value.sum()
 # print cost_matrix.tag.test_value.sum()
 # print cost_matrix.tag.test_value
-cost = math.log(math.e, 2) * aggregation.mean(cost_matrix.sum(), mask.sum())
+cost = math.log(math.e, 2) * aggregation.mean(cost_matrix[:,-200:].sum(), mask[:,-200:].sum())
 cost.name = "bits_per_character"
 cost_cg = ComputationGraph(cost)
 
