@@ -22,15 +22,32 @@ from blocks.select import Selector
 from theano import tensor
 from fuel.datasets import Dataset, TextFile
 from fuel.streams import DataStream
+from fuel.transformers import Batch, Padding, Mapping
+from fuel.schemes import ConstantScheme
 from fuel_test import get_unique_chars
 
-# TODO perplexity
-save_path = 'rnn_dump_1g.thn'
-num_batches = 2000000
-pickled_filenames = 'pickled_filenames_1g.pkl'
-unique_chars = 'charset_1g.pkl'
+testing = False
+
+num_batches = 10
+if not testing:
+   pickled_filenames = 'pickled_filenames_1g.pkl'
+   unique_chars = 'charset_1g.pkl'
+   save_path = 'rnn_dump_1g.thn'
+else:
+   pickled_filenames = 'pickled_filenames_toy.pkl'
+   unique_chars = 'charset_toy.pkl'
+   save_path = 'rnn_dump_toy.thn'
 data_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1g/'
 lstm_dim = 512
+
+def switch_first_two_axes(batch):
+   result = []
+   for array in batch:
+      if array.ndim == 2:
+         result.append(array.transpose(1, 0))
+      else:
+         result.append(array.transpose(1, 0, 2))
+   return tuple(result)
 
 def build_training_set():
    def get_training_files():
@@ -61,13 +78,20 @@ def build_training_set():
          pickle.dump(dictionary, uc)
          uc.close()
       return dictionary
-
-   files = get_training_files()
+   if testing:
+      files = ['data/toy/1', 'data/toy/2', 'data/toy/3']
+      pf = open(pickled_filenames, 'w')
+      pickle.dump(files, pf)
+      pf.close()
+   else:
+      files = get_training_files()
    files_no = len(files)
    total_size = 0
    for f in files:
       total_size += os.path.getsize(f)
    dictionary = build_dictionary(files)
+   print files
+   print dictionary
    text_files = TextFile(files = files,
                          dictionary = dictionary,
                          bos_token = None,
@@ -75,7 +99,12 @@ def build_training_set():
                          unk_token = '<UNK>',
                          level = 'character')
    alphabet_size = len(dictionary.keys())
-   return text_files, alphabet_size, files_no, total_size
+   batch = DataStream(text_files)
+   batch = Batch(batch, iteration_scheme=ConstantScheme(num_batches))
+   batch = Padding(batch)
+   batch = Mapping(batch, switch_first_two_axes)
+   
+   return batch, alphabet_size, files_no, total_size
 
 def build_generator():
    def build_rnn(lstm_dim):
@@ -106,16 +135,31 @@ def build_generator():
                             biases_init=Constant(0),
                             name="generator")
 
+print "GO"
+x = tensor.lmatrix('features')
+# x.tag.test_value = numpy.array([[1,2,3,2,1], [2,3,2,4,4], [1,2,3,2,4]], dtype='int64')
+print "X is OK"
+mask = tensor.fmatrix('features_mask')
+# mask.tag.test_value = numpy.array([[1,1,1,1,1], [1,1,1,0,0], [1,1,1,1,0]], dtype='float32')
+print "MASK is OK"
+# theano.config.compute_test_value = 'warn'
+# print dir(x)
+# print x.dtype, mask.dtype
 fuel_data, alphabet_size, files_no, signs_no = build_training_set()
+print "TEST SET BUILT"
 
 seq_gen = build_generator()
-
 seq_gen.push_initialization_config()
 seq_gen.initialize()
+print "SEQ_GEN PASSED"
 
-x = tensor.lvector('features')
-x = x.reshape( (x.shape[0], 1) )
-cost = math.log(math.e, 2) * aggregation.mean(seq_gen.cost_matrix(x[:,:]).sum(), x.shape[1])
+cost_matrix = seq_gen.cost_matrix(x, mask=mask)
+# print x.tag.test_value
+# print mask.tag.test_value
+# print mask.tag.test_value.sum()
+# print cost_matrix.tag.test_value.sum()
+# print cost_matrix.tag.test_value
+cost = math.log(math.e, 2) * aggregation.mean(cost_matrix.sum(), mask.sum())
 cost.name = "bits_per_character"
 cost_cg = ComputationGraph(cost)
 
@@ -144,11 +188,11 @@ average_monitor = TrainingDataMonitoring(observables, prefix="average", every_n_
 extensions.append(average_monitor)
 checkpointer = Checkpoint(save_path, every_n_batches=500, use_cpickle=True)
 extensions.append(checkpointer)
-extensions.append(Printing(every_n_batches=50))
+extensions.append(Printing(every_n_batches=100))
 
 main_loop = MainLoop(
                 algorithm=algorithm,
-                data_stream=DataStream(fuel_data),
+                data_stream=fuel_data,
                 model=Model(cost),
                 extensions=extensions)
 
