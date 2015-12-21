@@ -1,16 +1,23 @@
+# -*- coding: UTF-8 -*-
 import os
 import pickle
 import codecs
 
 files_size = 300
 overlap_size = 100
+acceptable_chars = u'abcdefghijklmnopqrstuvwxyz'
+acceptable_chars += u'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+acceptable_chars += u'1234567890`~-_=+[]{}\|;:,<.>/?\n"'
+acceptable_chars += u"'!@#$%^&*()"
+acceptable_chars += u'ęóąśłżźńć'
 
 def build_set(name, fnames, prefix_path, out_path):
     print name
     for fname in fnames:
         full_path = prefix_path + fname
         with codecs.open(full_path, 'r') as f:
-            conc = f.read()
+            conc = f.read().decode('utf-8')
+        conc = filter(lambda x: x in acceptable_chars, conc)
         piece_no = 1
         i = int(fname[3:]) # bardzo brzydkie wykorzystanie formatu 'artXXXX'
         # robimy strukture prefix_path/nr_kawalka/i, bo i < 100
@@ -20,7 +27,7 @@ def build_set(name, fnames, prefix_path, out_path):
             except:
                 pass
             with open(out_path + str(piece_no) + '/' + fname, 'wb+') as g:
-               g.write(conc[:files_size])
+               g.write(conc[:files_size].encode('utf-8'))
             conc = conc[files_size - overlap_size:]
             piece_no += 1
             

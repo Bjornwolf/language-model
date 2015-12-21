@@ -4,6 +4,8 @@ from fuel.datasets import Dataset
 
 import pickle
 
+import codecs
+
 class LazyFileIterator:
     def __init__(self, file_list):
         self.file_list = file_list
@@ -14,7 +16,7 @@ class LazyFileIterator:
     def next(self):
         if self.file_list == []:
             raise StopIteration
-        file_handle = open(self.file_list[0])
+        file_handle = codecs.open(self.file_list[0])
         self.file_list = self.file_list[1:]
         return file_handle
 

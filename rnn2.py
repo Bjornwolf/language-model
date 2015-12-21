@@ -17,7 +17,7 @@ from blocks.monitoring import aggregation
 from blocks.graph import ComputationGraph
 from blocks.extensions import FinishAfter, Printing, Timing
 from blocks.extensions.saveload import Checkpoint
-from blocks.extensions.monitoring import TrainingDataMonitoring, DataStreamMonitoring
+from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.main_loop import MainLoop
 from blocks.select import Selector
 from theano import tensor
@@ -32,9 +32,8 @@ testing = False
 num_batches = 30
 if not testing:
    pickled_filenames = 'pickled_filenames_1gu.pkl'
-   valid_filenames = 'pickled_filenames_valid_1gu.pkl'
    unique_chars = 'charset_1gu.pkl'
-   save_path = 'rnn_dump_1gu.thn'
+   save_path = 'rnn_dump_1gu2.thn'
 else:
    pickled_filenames = 'pickled_filenames_toy.pkl'
    unique_chars = 'charset_toy.pkl'
@@ -68,22 +67,6 @@ def build_training_set():
          pf.close()
       return files
 
-   def get_valid_files():
-      if os.path.isfile(valid_filenames):
-         pf = open(valid_filenames, 'r')
-         files = pickle.load(pf)
-         pf.close()
-      else:
-         files = []
-         data_location = data_path + 'test/'
-         for (dirname, _, filenames) in os.walk(data_location):
-            files += map(lambda x: dirname + '/' + x, filenames)
-         os.system('touch ' + pickled_filenames)
-         pf = open(valid_filenames, 'w')
-         pickle.dump(files, pf)
-         pf.close()
-      return files
-
    def build_dictionary(files):
       dictionary = {'<UNK>' : 0}
       alphabet = u'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -101,7 +84,6 @@ def build_training_set():
       pf.close()
    else:
       files = get_training_files()
-      valid = get_valid_files()
    files_no = len(files)
    total_size = 0
    for f in files:
@@ -122,18 +104,7 @@ def build_training_set():
    batch = Padding(batch)
    batch = Mapping(batch, switch_first_two_axes)
    
-   valid = TextFile(files = valid,
-                    dictionary = dictionary,
-                    bos_token = None,
-                    eos_token = None,
-                    unk_token = '<UNK>',
-                    level = 'character')   
-   v_batch = DataStream(valid)
-   v_batch = Batch(v_batch, iteration_scheme=ConstantScheme(num_batches))
-   v_batch = Padding(v_batch)
-   v_batch = Mapping(v_batch, switch_first_two_axes)
-
-   return batch, v_batch, alphabet_size, files_no, total_size
+   return batch, alphabet_size, files_no, total_size
 
 def build_generator():
    def build_rnn(lstm_dim):
@@ -141,16 +112,14 @@ def build_generator():
                   weights_init=Orthogonal())
       lstm2 = LSTM(dim=lstm_dim, use_bias=False,
                   weights_init=Orthogonal())
-      lstm3 = LSTM(dim=lstm_dim, use_bias=False,
-                  weights_init=Orthogonal())
 
-      return RecurrentStack([lstm1, lstm2, lstm3],
+      return RecurrentStack([lstm1, lstm2],
                            name="transition")
 
 
    rnn = build_rnn(lstm_dim)
    readout = Readout(readout_dim = alphabet_size,
-                     source_names=["states#2"],
+                     source_names=["states#1"],
                      emitter=SoftmaxEmitter(name="emitter"),
                      feedback_brick=LookupFeedback(alphabet_size,
                                                    feedback_dim=alphabet_size,
@@ -174,7 +143,7 @@ print "MASK is OK"
 # theano.config.compute_test_value = 'warn'
 # print dir(x)
 # print x.dtype, mask.dtype
-fuel_data, valid_data, alphabet_size, files_no, signs_no = build_training_set()
+fuel_data, alphabet_size, files_no, signs_no = build_training_set()
 print "TEST SET BUILT"
 
 seq_gen = build_generator()
@@ -219,17 +188,12 @@ extensions.append(Timing(after_batch=True))
 # wypisywanie observables
 extensions.append(TrainingDataMonitoring(list(observables), after_batch=True))
 # srednie z observables
-valid_monitor = DataStreamMonitoring(cost_cg.outputs, # + [num_frames], # ???
-                                     valid_data, prefix='valid',
-                                     before_first_epoch=False,
-                                     after_epoch=True, after_training=False)
-extensions.append(valid_monitor)
 averaging_frequency = 1000
 average_monitor = TrainingDataMonitoring(observables, prefix="average", every_n_batches=averaging_frequency)
 extensions.append(average_monitor)
 checkpointer = Checkpoint(save_path, every_n_batches=500, use_cpickle=True)
 extensions.append(checkpointer)
-extensions.append(Printing(every_n_batches=500))
+extensions.append(Printing(every_n_batches=100))
 
 main_loop = MainLoop(
                 algorithm=algorithm,

@@ -8,11 +8,9 @@ def get_unique_chars(filelist):
     letters = set('')
     for path in filelist:
         f = codecs.open(path, 'r')
-        line = '^'
-        while line != '':
-            line = f.readline()
-            sl = set(line)
-            letters = letters | sl
+        text = f.read().decode('utf-8')
+        s = set(text)
+        letters = letters | s
         f.close()
     letters = list(letters)
     result = {'<UNK>': 0}
