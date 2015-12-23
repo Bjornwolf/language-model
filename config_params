@@ -1,0 +1,10 @@
+working_mode = [train_new, train_resume]
+unknown_char = '<UNK>'
+minibatches = 30
+dict_path = // sciezka do slownika z literkami
+train_path = // sciezka do danych uczacych
+valid_path = // sciezka do danych walidacynych
+lstm_layers = 2
+lstm_init_width = 0.16
+batch_length = 300
+batch_overlap = 100
