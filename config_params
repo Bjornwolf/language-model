@@ -8,3 +8,9 @@ lstm_layers = 2
 lstm_init_width = 0.16
 batch_length = 300
 batch_overlap = 100
+
+average_frequency = 1000
+checkpoint_path // sciezka do dumpa
+checkpoint_frequency = 1000
+printing_frequency = 250
+valid_frequency = 500

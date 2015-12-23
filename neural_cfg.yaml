@@ -1,0 +1,16 @@
+working_mode: train_new
+unknown_char: <UNK>
+minibatches: 30
+lstm_layers: 2
+lstm_init_width: 0.16
+batch_length: 300
+batch_overlap: 100
+average_frequency: 1000
+checkpoint_frequency: 1000
+printing_frequency: 250
+valid_frequency: 500
+
+dict_path: /pio/scratch/1/i246059/language-model/alphabet.p
+train_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gu/train/
+valid_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gu/test/
+checkpoint_path: /pio/scratch/1/i246059/language-model/models/yaml1.thn

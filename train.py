@@ -1,12 +1,13 @@
 import sys
-
+import yaml
 from config import read_config
 from data import build_datasets
 from model import build_model, build_algorithm
 from monitor import build_extensions
 
 
-config_dict = read_config(sys.argv[1])
+config_dict = yaml.load(open(sys.argv[1], 'r'))
+print config_dict
 
 if config_dict['working_mode'] == 'train_new':
     train, valid, alphabet = build_datasets(config_dict)
