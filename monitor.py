@@ -5,7 +5,7 @@ from blocks.extensions.monitoring import (TrainingDataMonitoring,
         DataStreamMonitoring)
 
 
-def build_extensions(cost, algorithm, config):
+def build_extensions(cost, algorithm, valid, config):
     cost_cg = ComputationGraph(cost)
     observables = list(cost_cg.outputs)
     observables.append(algorithm.total_step_norm)
@@ -27,7 +27,7 @@ def build_extensions(cost, algorithm, config):
                                            before_first_epoch=False,
                                            after_epoch=True,
                                            after_training=False,
-                                           every_n_batches=valid_frequency)
+                                           every_n_batches=valid_frequency))
     extensions.append(Checkpoint(checkpoint_path,
                                  every_n_batches=checkpoint_frequency, 
                                  use_cpickle=True))

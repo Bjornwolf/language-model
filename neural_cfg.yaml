@@ -1,10 +1,26 @@
 working_mode: train_new
 unknown_char: <UNK>
-minibatches: 30
+
 lstm_layers: 2
+lstm_dim_0: 512
+lstm_dim_1: 512
 lstm_init_width: 0.16
+
+step_rules_no: 2
+step_rule_0: RMSProp
+step_rule_0_params:
+    learning_rate: 0.002
+    decay_rate: 0.95
+    max_scaling: 100000
+step_rule_1: StepClipping 
+step_rule_1_params: 
+    threshold: 5
+
+
+minibatches: 30
 batch_length: 300
 batch_overlap: 100
+
 average_frequency: 1000
 checkpoint_frequency: 1000
 printing_frequency: 250

@@ -5,10 +5,11 @@ from theano import tensor
 from blocks.bricks.recurrent import LSTM, RecurrentStack
 from blocks.bricks.sequence_generators import (SequenceGenerator,
         Readout, SoftmaxEmitter, LookupFeedback)
-from blocks.initialization imort Uniform
+from blocks.initialization import Uniform, Constant
 from blocks.select import Selector
 from blocks.algorithms import (GradientDescent, Scale, Momentum, AdaDelta, 
         RMSProp, StepClipping, Adam, CompositeRule)
+from blocks.monitoring import aggregation
 
 def build_model(alphabet_size, config):
     layers = config['lstm_layers']
@@ -81,12 +82,11 @@ def build_algorithm(generator, cost, config):
     else:
         rules = []
         for i in range(rules_no - 1):
-            rule_type = config['step_rule_' + str(n)]
-            rule_params = config['step_rule_' + str(n) + '_params']
+            rule_type = config['step_rule_' + str(i)]
+            rule_params = config['step_rule_' + str(i) + '_params']
             rules.append(build_rule(rule_type, rule_params))
             rule = CompositeRule(rules)
 
-    parameters
     parameters=list(Selector(generator).get_parameters().values())
     algorithm = GradientDescent(cost=cost, 
                                 parameters=parameters, 
