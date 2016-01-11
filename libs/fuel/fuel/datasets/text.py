@@ -6,6 +6,44 @@ import pickle
 
 import codecs
 
+class BigFileIterator:
+    def __init__(self, file_list):
+        self.i = 0
+        self.files = []
+        for fname in file_list:
+            handle = codecs.open(fname)
+            content = handle.read()
+            self.files += content.split('<*>LI<*>')
+            handle.close()
+        self.max_i = len(self.files)
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if self.i == self.max_i:
+            raise StopIteration
+        self.i += 1
+        return self.files[self.i-1]
+
+class EagerFileIterator:
+    def __init__(self, file_list):
+        self.i = 0
+        self.max_i = len(file_list)
+        self.files = []
+        for fname in file_list:
+            handle = codecs.open(fname)
+            self.files.append(handle.read())
+            handle.close()
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if self.i == self.max_i:
+            raise StopIteration
+        self.i += 1
+        return self.files[self.i-1]
+            
+
 class LazyFileIterator:
     def __init__(self, file_list):
         self.file_list = file_list
@@ -104,13 +142,16 @@ class TextFile(Dataset):
 
 
     def open(self):
-        return LazyFileIterator(self.files)
+        return BigFileIterator(self.files)
+        # return EagerFileIterator(self.files)
+        # return LazyFileIterator(self.files)
         # return chain(*[iter_(open(f)) for f in self.files])
 
     def get_data(self, state=None, request=None):
         if request is not None:
             raise ValueError
-        sentence = state.next().read()
+        sentence = state.next()
+        # sentence = state.next().read()
         # sentence = next(state)
         if self.preprocess is not None:
             sentence = self.preprocess(sentence)

@@ -13,31 +13,27 @@ acceptable_chars += u'ęóąśłżźńć'
 
 def build_set(name, fnames, prefix_path, out_path):
     print name
+    files = []
     for fname in fnames:
         full_path = prefix_path + fname
         with codecs.open(full_path, 'r') as f:
             conc = f.read().decode('utf-8')
         conc = filter(lambda x: x in acceptable_chars, conc)
-        piece_no = 1
-        i = int(fname[3:]) # bardzo brzydkie wykorzystanie formatu 'artXXXX'
-        # robimy strukture prefix_path/nr_kawalka/i, bo i < 100
         while conc != '':
-            try:
-                os.mkdir(out_path + str(piece_no), 0755)
-            except:
-                pass
-            with open(out_path + str(piece_no) + '/' + fname, 'wb+') as g:
-               g.write(conc[:files_size].encode('utf-8'))
+            files.append(conc[:files_size].encode('utf-8'))
             conc = conc[files_size - overlap_size:]
-            piece_no += 1
+    files = "<*>LI<*>".join(files)
+    g = open(out_path, 'wb')
+    g.write(files)
+    g.close()
             
 prefix_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_raw/plwiki/'
 
 
-train_fnames = pickle.load(open('/pio/lscratch/1/i246059/language-model/data/plwiki_raw/train_set_names', 'rb'))
-out_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1gu/train/'
+train_fnames = pickle.load(open('/pio/scratch/1/i246059/language-model/data/plwiki_raw/train_set_names', 'rb'))
+out_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1gm/train/data'
 build_set("TRAIN", train_fnames, prefix_path, out_path)
 
-test_fnames = pickle.load(open('/pio/lscratch/1/i246059/language-model/data/plwiki_raw/test_set_names', 'rb'))
-out_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1gu/test/'
+test_fnames = pickle.load(open('/pio/scratch/1/i246059/language-model/data/plwiki_raw/test_set_names', 'rb'))
+out_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1gm/test/data'
 build_set("TEST", test_fnames, prefix_path, out_path)
