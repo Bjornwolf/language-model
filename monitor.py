@@ -1,7 +1,6 @@
 from blocks.graph import ComputationGraph
 from blocks.extensions import Printing, Timing
 from blocks.extensions.saveload import Checkpoint
-from blocks.extensions.stopping import FinishAfterElapsed
 from blocks.extensions.monitoring import (TrainingDataMonitoring, 
         DataStreamMonitoring)
 
@@ -33,7 +32,5 @@ def build_extensions(cost, algorithm, valid, config):
                                  every_n_batches=checkpoint_frequency, 
                                  use_cpickle=True))
     extensions.append(Printing(every_n_batches=printing_frequency))
-    if 'finish_after' in config:
-        extensions.append(FinishAfterElapsed(iterations=config['finish_after']))
 
     return extensions

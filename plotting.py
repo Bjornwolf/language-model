@@ -8,7 +8,6 @@ from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.extensions.saveload import Load
 import cPickle as pickle
-from blocks.graph import ComputationGraph
 
 config_dict = yaml.load(open(sys.argv[1], 'r'))
 print config_dict
@@ -23,19 +22,12 @@ ml = Load(config_dict['checkpoint_path'], load_log=True)
 print dir(ml)
 
 ml.load_to(main_loop)
-generator = main_loop.model.get_top_bricks()[-1]
-
-sampler = ComputationGraph(generator.generate(
-    n_steps=1000, batch_size=10, iterate=True)).get_theano_function()
-
-samples = sampler()
-outputs = samples[-2]
-charset = pickle.load(open(config_dict['dict_path']))
-new_charset = {}
-for v in charset:
-    new_charset[charset[v]] = v
-charset = new_charset
-print charset
-for i in xrange(outputs.shape[1]):
-    print "Sample number ", i, ": ",
-    print ''.join(map(lambda x: charset[x], outputs[:,i]))
+print dir(main_loop.log)
+print main_loop.log.keys()
+print main_loop.log.keys()[0]
+t_xs = main_loop.log.keys()[1:]
+v_xs = filter(lambda x: 'valid_bits_per_character' in main_loop.log[x], t_xs)
+bpc = map(lambda x: main_loop.log[x]['bits_per_character'], t_xs)
+vbpc = map(lambda x: main_loop.log[x]['valid_bits_per_character'], v_xs)
+blob = ((t_xs, bpc), (v_xs, vbpc))
+pickle.dump(blob, open('/home/i246059/public_html/' + sys.argv[1][:-5], 'w'))
