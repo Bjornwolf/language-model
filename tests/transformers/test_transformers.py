@@ -1,3 +1,4 @@
+import logging
 import operator
 from collections import OrderedDict
 
@@ -11,9 +12,10 @@ from fuel.schemes import (ConstantScheme, SequentialScheme,
                           SequentialExampleScheme)
 from fuel.streams import DataStream
 from fuel.transformers import (
-    Transformer, Mapping, SortMapping, ForceFloatX, Filter, Cache, Batch,
-    Padding, MultiProcessing, Unpack, Merge, SourcewiseTransformer, Flatten,
-    ScaleAndShift, Cast, Rename, FilterSources)
+    ExpectsAxisLabels, Transformer, Mapping, SortMapping, ForceFloatX, Filter,
+    Cache, Batch, Padding, MultiProcessing, Unpack, Merge,
+    SourcewiseTransformer, Flatten, ScaleAndShift, Cast, Rename, FilterSources)
+from fuel.transformers.defaults import ToBytes
 
 
 class FlagDataStream(DataStream):
@@ -147,13 +149,15 @@ class TestSourcewiseTransformer(object):
         transformer = SourcewiseTransformer(
             DataStream(IterableDataset([1, 2])), True)
         assert_raises(
-            NotImplementedError, transformer.transform_source_example, None)
+            NotImplementedError, transformer.transform_source_example,
+            None, 'foo')
 
     def test_transform_source_batch_not_implemented(self):
         transformer = SourcewiseTransformer(
             DataStream(IterableDataset([1, 2])), True)
         assert_raises(
-            NotImplementedError, transformer.transform_source_batch, None)
+            NotImplementedError, transformer.transform_source_batch,
+            None, 'foo')
 
 
 class TestFlatten(object):
@@ -516,14 +520,52 @@ class TestMerge(object):
         self.streams = (
             DataStream(IterableDataset(['Hello world!'])),
             DataStream(IterableDataset(['Bonjour le monde!'])))
-        self.transformer = Merge(self.streams, ('english', 'french'))
+        self.batch_streams = (
+            Batch(DataStream(IterableDataset(['Hello world!', 'Hi!'])),
+                  iteration_scheme=ConstantScheme(2)),
+            Batch(DataStream(IterableDataset(['Bonjour le monde!', 'Salut!'])),
+                  iteration_scheme=ConstantScheme(2)))
+        self.transformer = Merge(
+            self.streams, ('english', 'french'))
+        self.batch_transformer = Merge(
+            self.batch_streams, ('english', 'french'))
 
     def test_sources(self):
         assert_equal(self.transformer.sources, ('english', 'french'))
 
     def test_merge(self):
-        assert_equal(next(self.transformer.get_epoch_iterator()),
-                     ('Hello world!', 'Bonjour le monde!'))
+        it = self.transformer.get_epoch_iterator()
+        assert_equal(next(it), ('Hello world!', 'Bonjour le monde!'))
+        assert_raises(StopIteration, next, it)
+        # There used to be problems with reseting Merge, for which
+        # reason we regression-test it as follows:
+        it = self.transformer.get_epoch_iterator()
+        assert_equal(next(it), ('Hello world!', 'Bonjour le monde!'))
+        assert_raises(StopIteration, next, it)
+
+    def test_batch_merge(self):
+        it = self.batch_transformer.get_epoch_iterator()
+        assert_equal(next(it),
+                     (('Hello world!', 'Hi!'),
+                      ('Bonjour le monde!', 'Salut!')))
+        assert_raises(StopIteration, next, it)
+        # There used to be problems with reseting Merge, for which
+        # reason we regression-test it as follows:
+        it = self.batch_transformer.get_epoch_iterator()
+        assert_equal(next(it),
+                     (('Hello world!', 'Hi!'),
+                      ('Bonjour le monde!', 'Salut!')))
+        assert_raises(StopIteration, next, it)
+
+    def test_merge_batch_streams(self):
+        it = self.transformer.get_epoch_iterator()
+        assert_equal(next(it), ('Hello world!', 'Bonjour le monde!'))
+        assert_raises(StopIteration, next, it)
+        # There used to be problems with reseting Merge, for which
+        # reason we regression-test it as follows:
+        it = self.transformer.get_epoch_iterator()
+        assert_equal(next(it), ('Hello world!', 'Bonjour le monde!'))
+        assert_raises(StopIteration, next, it)
 
     def test_as_dict(self):
         assert_equal(
@@ -651,3 +693,57 @@ class TestFilterSources(object):
         transformer = FilterSources(self.stream, sources=("features",))
         assert_equal(transformer.axis_labels,
                      {'features': ('batch', 'width', 'height')})
+
+
+class VerifyWarningHandler(logging.Handler):
+    def __init__(self, *args, **kwargs):
+        self.records = []
+        super(VerifyWarningHandler, self).__init__(*args, **kwargs)
+
+    def handle(self, record):
+        self.records.append(record)
+
+
+class TestExpectsAxisLabels(object):
+    def setUp(self):
+        self.obj = ExpectsAxisLabels()
+        self.handler = VerifyWarningHandler()
+        logging.getLogger().addHandler(self.handler)
+
+    def tearDown(self):
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers:
+            if isinstance(handler, VerifyWarningHandler):
+                root_logger.handlers.remove(handler)
+
+    def test_warning(self):
+        self.obj.verify_axis_labels(('a', 'b', 'c'), None, 'foo')
+        assert len(self.handler.records) == 1
+        assert self.handler.records[0].levelno == logging.WARNING
+
+    def test_exception(self):
+        assert_raises(ValueError, self.obj.verify_axis_labels, ('a', 'b', 'c'),
+                      ('b', 'c', 'd'), 'foo')
+
+
+class TestToBytes(object):
+    def setUp(self):
+        self.string_data = [b'Hello', b'World!']
+        self.dataset = IndexableDataset(
+            indexables={'words': [numpy.fromstring(s, dtype='uint8')
+                                  for s in self.string_data]},
+            axis_labels={'words': ('batch', 'bytes')})
+
+    def test_examplewise(self):
+        stream = DataStream(
+            dataset=self.dataset, iteration_scheme=SequentialExampleScheme(2))
+        decoded_stream = ToBytes(stream)
+        assert_equal(self.string_data,
+                     [s for s, in decoded_stream.get_epoch_iterator()])
+
+    def test_batchwise(self):
+        stream = DataStream(
+            dataset=self.dataset, iteration_scheme=SequentialScheme(2, 2))
+        decoded_stream = ToBytes(stream)
+        assert_equal([self.string_data],
+                     [s for s, in decoded_stream.get_epoch_iterator()])
