@@ -276,7 +276,18 @@ def struct_gen(args, struct_builders, blocks, sub):
         %(storage_decl)s
         %(struct_decl)s
 
-        %(name)s() {}
+        %(name)s() {
+            // This is only somewhat safe because we:
+            //  1) Are not a virtual class
+            //  2) Do not use any virtual classes in the members
+            //  3) Deal with mostly POD and pointers
+
+            // If this changes, we would have to revise this, but for
+            // now I am tired of chasing segfaults because
+            // initialization code had an error and some pointer has
+            // a junk value.
+            memset(this, 0, sizeof(*this));
+        }
         ~%(name)s(void) {
             cleanup();
         }
@@ -499,7 +510,8 @@ def struct_variable_codeblocks(variable, policies, id, symbol_table, sub):
     """
 
     name = "V%i" % id
-    symbol_table[variable] = name
+    if variable not in symbol_table:
+        symbol_table[variable] = name
     sub = dict(sub)
 #    sub['name'] = name
     sub['id'] = id
@@ -547,9 +559,8 @@ class CLinker(link.Linker):
         if no_recycling is None:
             no_recycling = []
         if self.fgraph is not None and self.fgraph is not fgraph:
-            return type(self)().accept(fgraph, no_recycling)
-            # raise Exception("Cannot accept from a Linker that is already"
-            #                " tied to another FunctionGraph.")
+            # A linker can be tied to only one FunctionGraph.
+            return type(self)(self.schedule).accept(fgraph, no_recycling)
         self.fgraph = fgraph
         self.fetch_variables()
         self.no_recycling = no_recycling
@@ -575,22 +586,22 @@ class CLinker(link.Linker):
         self.variables = [var for var in self.inputs if not len(var.clients)]
         self.variables += graph.variables(self.inputs, self.outputs)
 
-        # This adds a hidden input which is the context for each node
+        # This adds a hidden input which is the params for each node
         # that needs it
-        self.contexts = dict()
+        self.node_params = dict()
         for node in self.node_order:
-            ctx = node.run_context()
-            if ctx is not graph.NoContext:
+            params = node.run_params()
+            if params is not graph.NoParams:
                 # try to avoid creating more than one variable for the
-                # same context.
-                if ctx in self.contexts:
-                    var = self.contexts[ctx]
-                    assert var.type == node.context_type
-                    var.clients.append((node, 'context'))
+                # same params.
+                if params in self.node_params:
+                    var = self.node_params[params]
+                    assert var.type == node.params_type
+                    var.clients.append((node, 'params'))
                 else:
-                    var = graph.Constant(node.context_type, ctx)
-                    var.clients = [(node, 'context')]
-                    self.contexts[ctx] = var
+                    var = graph.Constant(node.params_type, params)
+                    var.clients = [(node, 'params')]
+                    self.node_params[params] = var
                     self.variables.append(var)
 
         # The orphans field is listified to ensure a consistent order.
@@ -598,9 +609,20 @@ class CLinker(link.Linker):
         self.orphans = list(r for r in self.variables
                             if isinstance(r, graph.Constant) and
                             r not in self.inputs)
+        # C type constants (theano.scalar.Scalar). They don't request an object
+        self.consts = []
+        # Move c type from orphans (theano.scalar.Scalar) to self.consts
+        for variable in self.orphans:
+            if isinstance(variable, graph.Constant):
+                try:
+                    variable.type.c_literal(variable.data)
+                    self.consts.append(variable)
+                    self.orphans.remove(variable)
+                except (utils.MethodNotDefined, NotImplementedError):
+                    pass
+
         self.temps = list(set(self.variables).difference(
             self.inputs).difference(self.outputs).difference(self.orphans))
-        self.consts = []
 
     def code_gen(self):
         """
@@ -623,8 +645,6 @@ class CLinker(link.Linker):
             return self.struct_code
 
         no_recycling = self.no_recycling
-
-        self.consts = []
 
         c_support_code_apply = []
         c_init_code_apply = []
@@ -654,7 +674,11 @@ class CLinker(link.Linker):
             #           [what to declare in each run,
             #            what to do at the beginning of each run,
             #            what to do at the end of each run]]
-            if variable in self.inputs:
+            if variable in self.consts:
+                symbol[variable] = ("(" + variable.type.c_literal(
+                    variable.data) + ")")
+                continue
+            elif variable in self.inputs:
                 # We need to extract the new inputs at each run
                 # they do not need to be relayed to Python, so we don't sync.
                 # If the variable is both an input and an output, there is
@@ -665,15 +689,6 @@ class CLinker(link.Linker):
                 if not isinstance(variable, graph.Constant):
                     raise TypeError("All orphans to CLinker must be Constant"
                                     " instances.", variable)
-                if isinstance(variable, graph.Constant):
-                    try:
-                        symbol[variable] = ("(" + variable.type.c_literal(
-                            variable.data) + ")")
-                        self.consts.append(variable)
-                        self.orphans.remove(variable)
-                        continue
-                    except (utils.MethodNotDefined, NotImplementedError):
-                        pass
                 # orphans are not inputs so we'll just get fetch them
                 # when we initialize the struct and assume they stay
                 # the same
@@ -733,9 +748,9 @@ class CLinker(link.Linker):
 
             sub = dict(failure_var=failure_var)
 
-            ctx = node.run_context()
-            if ctx is not graph.NoContext:
-                context_var = symbol[self.contexts[ctx]]
+            params = node.run_params()
+            if params is not graph.NoParams:
+                params_var = symbol[self.node_params[params]]
 
             # The placeholder will be replaced by a hash of the entire
             # code (module + support code) in DynamicModule.code.
@@ -751,16 +766,16 @@ class CLinker(link.Linker):
             # Make the CodeBlock for c_code
             sub['id'] = id
             sub['fail'] = failure_code(sub)
-            if ctx is not graph.NoContext:
-                sub['context'] = context_var
+            if params is not graph.NoParams:
+                sub['params'] = params_var
 
             sub_struct = dict()
             sub_struct['id'] = id + 1
             sub_struct['fail'] = failure_code_init(sub)
-            if ctx is not graph.NoContext:
-                # Since context inputs are always constants they are
+            if params is not graph.NoParams:
+                # Since params inputs are always constants they are
                 # guaranteed to be available in the struct init code.
-                sub_struct['context'] = context_var
+                sub_struct['params'] = params_var
 
             struct_support = ""
             struct_init = ""
@@ -1149,13 +1164,6 @@ class CLinker(link.Linker):
         for v in self.variables:
             if v in self.consts:
                 continue
-            if v in self.orphans and isinstance(v, graph.Constant):
-                try:
-                    # constant will be inlined, no need to get
-                    v.type.c_literal(v.data)
-                    continue
-                except (utils.MethodNotDefined, NotImplementedError):
-                    pass
             init_tasks.append((v, 'init', id))
             tasks.append((v, 'get', id + 1))
             id += 2
@@ -1283,6 +1291,34 @@ class CLinker(link.Linker):
                                  header_dirs=self.header_dirs(),
                                  c_compiler=self.c_compiler(),
                                  )
+
+    def cmodule_key_variables(self, inputs, outputs, no_recycling,
+                              compile_args=None, libraries=None,
+                              header_dirs=None, insert_config_md5=True,
+                              c_compiler=None):
+
+        # Assemble a dummy fgraph using the provided inputs and outputs. It is
+        # only used to compute the cmodule key so it only need to expose an
+        # `inputs` and an `outputs` attribute as well as a toposort() method
+        # which returns a deterministic result.
+        class FakeFunctionGraph():
+            def __init__(self, inputs, outputs):
+                self.inputs = inputs
+                self.outputs = outputs
+
+            def toposort(self):
+                # Calling io_toposort() here is fine because the results will
+                # only be used to compute the cmodule key which requires that
+                # the result of the toposort be deterministic. The ordering
+                # doesn't need to include information about inplace operations
+                # because that information will be included explicitly in
+                # cmodule_key_().
+                return graph.io_toposort(self.inputs, self.outputs)
+
+        fgraph = FakeFunctionGraph(inputs, outputs)
+        return self.cmodule_key_(fgraph, no_recycling, compile_args,
+                                 libraries, header_dirs, insert_config_md5,
+                                 c_compiler)
 
     def cmodule_key_(self, fgraph, no_recycling, compile_args=None,
                      libraries=None, header_dirs=None, insert_config_md5=True,
@@ -1425,8 +1461,15 @@ class CLinker(link.Linker):
             fgraph_computed_set.update(node.outputs)
 
         # Add not used input in the key
+        # If inputs don't define a 'clients' attribute (as is the case if
+        # fgraph is not a real FunctionGraph but a FakeFunctionGraph, a
+        # lightweight class designed to imitate FunctionGraph), pretend they
+        # have none. This if fine because the goal is only to have all of the
+        # graph's information used to compute the key. If we mistakenly
+        # pretend that inputs with clients don't have any, were are only using
+        # those inputs more than once to compute the key.
         for ipos, var in [(i, var) for i, var in enumerate(fgraph.inputs)
-                          if not len(var.clients)]:
+                          if not len(getattr(var, 'clients', []))]:
             sig.append((var.type, in_sig(var, -1, ipos)))
 
         # crystalize the signature and version
@@ -1717,13 +1760,13 @@ class OpWiseCLinker(link.LocalLinker):
         if no_recycling is None:
             no_recycling = []
         if self.fgraph is not None and self.fgraph is not fgraph:
+            # A linker can be tied to only one FunctionGraph.
             return type(self)(
                 fallback_on_perform=self.fallback_on_perform,
                 allow_gc=self.allow_gc,
-                nice_errors=self.nice_errors
+                nice_errors=self.nice_errors,
+                schedule=self.schedule,
             ).accept(fgraph, no_recycling)
-            # raise Exception("Cannot accept from a Linker that is
-            # already tied to another FunctionGraph.")
         self.fgraph = fgraph
         self.no_recycling = no_recycling
         return self
@@ -1873,7 +1916,8 @@ class DualLinker(link.Linker):
         if no_recycling is None:
             no_recycling = []
         if self.fgraph is not None and self.fgraph is not fgraph:
-            return type(self)(self.checker).accept(fgraph, no_recycling)
+            return type(self)(self.checker, self.schedule).accept(
+                fgraph, no_recycling)
         self.fgraph = fgraph
         self.no_recycling = no_recycling
         return self

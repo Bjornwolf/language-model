@@ -4,7 +4,8 @@ import logging
 
 import theano
 from theano.configparser import (AddConfigVar, BoolParam, ConfigParam, EnumStr,
-                                 IntParam, StrParam, TheanoConfigParser)
+                                 FloatParam, IntParam, StrParam,
+                                 TheanoConfigParser)
 from theano.misc.cpucount import cpuCount
 from theano.misc.windows import call_subprocess_Popen
 
@@ -111,9 +112,44 @@ AddConfigVar(
     BoolParam(False, allow_override=False),
     in_c_key=False)
 
+
+class ContextsParam(ConfigParam):
+    def __init__(self):
+        def filter(val):
+            if val == '':
+                return val
+            for v in val.split(';'):
+                s = v.split('->')
+                if len(s) != 2:
+                    raise ValueError("Malformed context map: %s" % (v,))
+                if (s[0] == 'cpu' or s[0].startswith('cuda') or
+                        s[0].startswith('opencl')):
+                    raise ValueError("Cannot use %s as context name" % (s[0],))
+            return val
+        ConfigParam.__init__(self, '', filter, False)
+
+AddConfigVar(
+    'contexts',
+    """
+    Context map for multi-gpu operation. Format is a
+    semicolon-separated list of names and device names in the
+    'name->dev_name' format. An example that would map name 'test' to
+    device 'cuda0' and name 'test2' to device 'opencl0:0' follows:
+    "test->cuda0;test2->opencl0:0".
+
+    Invalid context names are 'cpu', 'cuda*' and 'opencl*'
+    """, ContextsParam(), in_c_key=False)
+
 AddConfigVar(
     'print_active_device',
     "Print active device at when the GPU device is initialized.",
+    BoolParam(True, allow_override=False),
+    in_c_key=False)
+
+
+AddConfigVar(
+    'enable_initial_driver_test',
+    "Tests the nvidia driver when a GPU device is initialized.",
     BoolParam(True, allow_override=False),
     in_c_key=False)
 
@@ -127,7 +163,7 @@ def default_cuda_root():
         return ''
     for dir in s.split(os.path.pathsep):
         if os.path.exists(os.path.join(dir, "nvcc")):
-            return os.path.split(dir)[0]
+            return os.path.dirname(os.path.abspath(dir))
     return ''
 
 AddConfigVar(
@@ -184,28 +220,97 @@ AddConfigVar('gpuarray.sync',
              BoolParam(False),
              in_c_key=True)
 
+AddConfigVar('gpuarray.preallocate',
+             """If 0 it doesn't do anything.  If between 0 and 1 it
+             will preallocate that fraction of the total GPU memory.
+             If 1 or greater it will preallocate that amount of memory
+             (in megabytes).""",
+             FloatParam(0, lambda i: i >= 0),
+             in_c_key=False)
+
+
+def safe_no_dnn_workmem(workmem):
+    """
+    Make sure the user is not attempting to use dnn.conv.workmem`.
+    """
+    if workmem:
+        raise RuntimeError(
+            'The option `dnn.conv.workmem` has been removed and should '
+            'not be used anymore. Please use the option '
+            '`dnn.conv.algo_fwd` instead.')
+    return True
+
 AddConfigVar('dnn.conv.workmem',
              "This flag is deprecated; use dnn.conv.algo_fwd.",
-             EnumStr(''),
+             ConfigParam('', allow_override=False, filter=safe_no_dnn_workmem),
              in_c_key=False)
+
+
+def safe_no_dnn_workmem_bwd(workmem):
+    """
+    Make sure the user is not attempting to use dnn.conv.workmem_bwd`.
+    """
+    if workmem:
+        raise RuntimeError(
+            'The option `dnn.conv.workmem_bwd` has been removed and '
+            'should not be used anymore. Please use the options '
+            '`dnn.conv.algo_bwd_filter` and `dnn.conv.algo_bwd_data` instead.')
+    return True
 
 AddConfigVar('dnn.conv.workmem_bwd',
              "This flag is deprecated; use dnn.conv.algo_bwd.",
-             EnumStr(''),
+             ConfigParam('', allow_override=False,
+                         filter=safe_no_dnn_workmem_bwd),
+             in_c_key=False)
+
+
+def safe_no_dnn_algo_bwd(algo):
+    """
+    Make sure the user is not attempting to use dnn.conv.algo_bwd`.
+    """
+    if algo:
+        raise RuntimeError(
+            'The option `dnn.conv.algo_bwd` has been removed and '
+            'should not be used anymore. Please use the options '
+            '`dnn.conv.algo_bwd_filter` and `dnn.conv.algo_bwd_data` instead.')
+    return True
+
+AddConfigVar('dnn.conv.algo_bwd',
+             "This flag is deprecated; use dnn.conv.algo_bwd_data and "
+             "dnn.conv.algo_bwd_filter.",
+             ConfigParam('', allow_override=False,
+                         filter=safe_no_dnn_algo_bwd),
              in_c_key=False)
 
 AddConfigVar('dnn.conv.algo_fwd',
              "Default implementation to use for CuDNN forward convolution.",
-             EnumStr('small', 'none', 'large', 'fft', 'guess_once',
+             EnumStr('small', 'none', 'large', 'fft', 'fft_tiling',
+                     'guess_once', 'guess_on_shape_change',
+                     'time_once', 'time_on_shape_change'),
+             in_c_key=False)
+
+AddConfigVar('dnn.conv.algo_bwd_data',
+             "Default implementation to use for CuDNN backward convolution to "
+             "get the gradients of the convolution with regard to the inputs.",
+             EnumStr('none', 'deterministic', 'fft', 'fft_tiling',
+                     'guess_once', 'guess_on_shape_change', 'time_once',
+                     'time_on_shape_change'),
+             in_c_key=False)
+
+AddConfigVar('dnn.conv.algo_bwd_filter',
+             "Default implementation to use for CuDNN backward convolution to "
+             "get the gradients of the convolution with regard to the "
+             "filters.",
+             EnumStr('none', 'deterministic', 'fft', 'small', 'guess_once',
                      'guess_on_shape_change', 'time_once',
                      'time_on_shape_change'),
              in_c_key=False)
 
-AddConfigVar('dnn.conv.algo_bwd',
-             "Default implementation to use for CuDNN backward convolution.",
-             EnumStr('none', 'deterministic', 'fft', 'guess_once',
-                     'guess_on_shape_change', 'time_once',
-                     'time_on_shape_change'),
+AddConfigVar('dnn.conv.precision',
+             "Default data precision to use for the computation in CuDNN "
+             "convolutions (defaults to the same dtype as the inputs of the "
+             "convolutions).",
+             EnumStr('as_input', 'float16', 'float32', 'float64'),
              in_c_key=False)
 
 
@@ -421,10 +526,14 @@ AddConfigVar(
 AddConfigVar(
     'traceback.limit',
     "The number of stack to trace. -1 mean all.",
-    # We default to 6 to be able to know where v1 + v2 is created in the
+    # We default to a number to be able to know where v1 + v2 is created in the
     # user script. The bigger this number is, the more run time it takes.
-    # We need to default to 7 to support theano.tensor.tensor(...).
-    IntParam(7),
+    # We need to default to 8 to support theano.tensor.tensor(...).
+    # import theano, numpy
+    # X = theano.tensor.matrix()
+    # y = X.reshape((5,3,1))
+    # assert y.tag.trace
+    IntParam(8),
     in_c_key=False)
 
 AddConfigVar('experimental.mrg',
@@ -612,6 +721,16 @@ AddConfigVar(
     in_c_key=False)
 
 
+AddConfigVar(
+    'print_test_value',
+    ("If 'True', the __eval__ of a Theano variable will return its test_value "
+     "when this is available. This has the practical conseguence that, e.g., "
+     "in debugging `my_var` will print the same as `my_var.tag.test_value` "
+     "when a test value is defined."),
+    BoolParam(False),
+    in_c_key=False)
+
+
 AddConfigVar('compute_test_value_opt',
              ("For debugging Theano optimization only."
               " Same as compute_test_value, but is used"
@@ -716,3 +835,20 @@ AddConfigVar(
     "the first optimization, and could possibly still contains some bugs. "
     "Use at your own risks.",
     BoolParam(False))
+
+
+def good_seed_param(seed):
+    if seed == "random":
+        return True
+    try:
+        int(seed)
+    except Exception:
+        return False
+    return True
+
+
+AddConfigVar('unittests.rseed',
+             "Seed to use for randomized unit tests. "
+             "Special value 'random' means using a seed of None.",
+             StrParam(666, is_valid=good_seed_param),
+             in_c_key=False)

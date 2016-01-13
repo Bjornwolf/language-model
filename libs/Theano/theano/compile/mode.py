@@ -91,6 +91,8 @@ exclude = []
 if not theano.config.cxx:
     exclude = ['cxx_only']
 OPT_NONE = gof.Query(include=[], exclude=exclude)
+# Even if multiple merge optimizer call will be there, this shouldn't
+# impact performance.
 OPT_MERGE = gof.Query(include=['merge'], exclude=exclude)
 OPT_FAST_RUN = gof.Query(include=['fast_run'], exclude=exclude)
 OPT_FAST_RUN_STABLE = OPT_FAST_RUN.requiring('stable')
@@ -113,7 +115,7 @@ OPT_STABILIZE.name = 'OPT_STABILIZE'
 predefined_optimizers = {
     None: OPT_NONE,
     'None': OPT_NONE,
-    'merge': gof.MergeOptimizer(),
+    'merge': OPT_MERGE,
     'fast_run': OPT_FAST_RUN,
     'fast_run_stable': OPT_FAST_RUN_STABLE,
     'fast_compile': OPT_FAST_COMPILE,
@@ -196,8 +198,17 @@ optdb.register('merge1', gof.MergeOptimizer(),
                0, 'fast_run', 'fast_compile', 'merge')
 
 # rearranges elemwise expressions
-optdb.register('canonicalize', gof.EquilibriumDB(),
-               1, 'fast_run', 'fast_compile')
+optdb.register('canonicalize', gof.EquilibriumDB(ignore_newtrees=False),
+               1, 'fast_run', 'fast_compile', 'canonicalize_db')
+# Register in the canonizer Equilibrium as a clean up opt the merge opt.
+# Without this, as the equilibrium have ignore_newtrees=False, we
+# won't merge all nodes if it is set as a global optimizer with
+# final_opt=True.
+
+# We need a new instance of MergeOptimizer to don't have its name
+# changed by other usage of it.
+optdb['canonicalize'].register("merge", gof.opt.MergeOptimizer(), 'fast_run',
+                               "fast_compile", cleanup=True)
 
 optdb.register('merge1.2', gof.MergeOptimizer(),
                1.2, 'fast_run', 'fast_compile', 'merge')
@@ -222,7 +233,7 @@ optdb.register('uncanonicalize', gof.EquilibriumDB(),
 
 # misc special cases for speed that are dependent on the device.
 optdb.register('specialize_device', gof.EquilibriumDB(),
-               48.6, 'fast_run')  # must be after gpu stuff at 48.5
+               48.6, 'fast_compile', 'fast_run')  # must be after gpu stuff at 48.5
 
 # especially constant merge
 optdb.register('merge2', gof.MergeOptimizer(),

@@ -6,6 +6,7 @@ import os
 import shutil
 import stat
 import sys
+import warnings
 
 import theano
 from theano.compat import get_unbound_function
@@ -16,6 +17,8 @@ from theano.gof.compilelock import get_lock, release_lock
 from theano.configparser import (
     config, AddConfigVar, BoolParam, FloatParam, StrParam)
 from . import nvcc_compiler
+
+from theano.tensor.basic import register_transfer
 
 # ignore_newtrees is to speed the optimization as this is the pattern
 # we use for optimization. Otherwise, we can iterate 100s of time on
@@ -257,7 +260,7 @@ if cuda_available:
         cuda_available = False
         cuda_initialization_error_message = " ".join(e.args)
 else:
-    cuda_initialization_error_message = 'cuda unavilable'
+    cuda_initialization_error_message = 'cuda unavailable'
 
 
 class GpuOp(theano.gof.Op):
@@ -316,7 +319,7 @@ if cuda_available:
             GpuDimShuffle, GpuCAReduce, GpuReshape, GpuContiguous,
             GpuSubtensor, GpuIncSubtensor,
             GpuAdvancedSubtensor1, GpuAdvancedIncSubtensor1,
-            GpuFlatten, GpuShape, GpuAlloc, GpuSplit,
+            gpu_flatten, GpuFlatten, GpuShape, GpuAlloc, GpuAllocEmpty, GpuSplit,
             GpuJoin, fscalar, fvector, fmatrix, frow, fcol,
             ftensor3, ftensor4,
             scalar, vector, matrix, row, col,
@@ -326,6 +329,12 @@ if cuda_available:
     import cuda_ndarray
     from . import opt, dnn
     from .rng_curand import CURAND_RandomStreams
+
+    def transfer(x, target):
+        if target == 'gpu':
+            return as_cuda_ndarray_variable(x)
+
+    register_transfer(transfer)
 
 
 def use(device,
@@ -341,7 +350,7 @@ def use(device,
 
     Parameters
     ----------
-    device : string 
+    device : string
         "cpu", "gpu", "gpuN" (N is the device number to use).
     force
         Will always raise an exception if we can't use the gpu.
@@ -421,6 +430,10 @@ def use(device,
                 # query the active GPU. If we check the active GPU before
                 # the device is initialized we will always receive 0
                 # event if another device is selected later.
+                if not hasattr(cuda_ndarray.cuda_ndarray, 'select_a_gpu'):
+                    raise Exception(
+                        "Delete your Theano cache. The automatic"
+                        " recompilation did not work.")
                 cuda_ndarray.cuda_ndarray.select_a_gpu()
                 use.device_number = active_device_number()
                 # This is needed to initialize the cublas handle.
@@ -510,11 +523,10 @@ def unuse():
     cuda_enabled = False
     handle_shared_float32(False)
     optdb.remove_tags('gpu_opt',
-                   'fast_run',
-                   'inplace')
+                      'fast_compile',
+                      'fast_run')
     optdb.remove_tags('gpu_after_fusion',
-                   'fast_run',
-                   'inplace')
+                      'fast_run')
 
 
 def handle_shared_float32(tf):

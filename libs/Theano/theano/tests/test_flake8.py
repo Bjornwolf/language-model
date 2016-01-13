@@ -14,7 +14,7 @@ except ImportError:
     flake8_available = False
 
 __authors__ = ("Saizheng Zhang")
-__copyright__ = "(c) 2015, Universite de Montreal"
+__copyright__ = "(c) 2016, Universite de Montreal"
 __contact__ = "Saizheng Zhang <saizhenglisa..at..gmail.com>"
 
 # We ignore:
@@ -51,13 +51,7 @@ whitelist_flake8 = [
     "compile/tests/test_pfunc.py",
     "compile/tests/test_debugmode.py",
     "compile/tests/test_profiling.py",
-    "typed_list/type.py",
     "typed_list/__init__.py",
-    "typed_list/opt.py",
-    "typed_list/basic.py",
-    "typed_list/tests/test_type.py",
-    "typed_list/tests/test_opt.py",
-    "typed_list/tests/test_basic.py",
     "tensor/__init__.py",
     "tensor/tests/test_subtensor.py",
     "tensor/tests/test_utils.py",
@@ -108,11 +102,8 @@ whitelist_flake8 = [
     "sandbox/debug.py",
     "sandbox/tests/test_theano_object.py",
     "sandbox/tests/test_scan.py",
-    "sandbox/tests/test_rng_mrg.py",
     "sandbox/tests/test_neighbourhoods.py",
-    "sandbox/tests/test_multinomial.py",
     "sandbox/tests/__init__.py",
-    "sandbox/cuda/dnn.py",
     "sandbox/cuda/var.py",
     "sandbox/cuda/GpuConvGrad3D.py",
     "sandbox/cuda/basic_ops.py",
@@ -158,17 +149,12 @@ whitelist_flake8 = [
     "sandbox/linalg/__init__.py",
     "sandbox/linalg/tests/test_linalg.py",
     "sandbox/gpuarray/__init__.py",
-    "sandbox/gpuarray/tests/test_subtensor.py",
-    "sandbox/gpuarray/tests/test_scan.py",
-    "sandbox/gpuarray/tests/test_opt.py",
-    "sandbox/gpuarray/tests/test_elemwise.py",
     "scan_module/scan_utils.py",
     "scan_module/scan_views.py",
     "scan_module/scan.py",
     "scan_module/scan_op.py",
     "scan_module/scan_perform_ext.py",
     "scan_module/__init__.py",
-    "scan_module/scan_opt.py",
     "scan_module/tests/test_scan.py",
     "scan_module/tests/test_scan_opt.py",
     "misc/tests/test_may_share_memory.py",
@@ -197,7 +183,7 @@ whitelist_flake8 = [
 ]
 
 
-def list_files(dir_path=theano.__path__[0], pattern='*.py'):
+def list_files(dir_path=theano.__path__[0], pattern='*.py', no_match=".#"):
     """
     List all files under theano's path.
     """
@@ -206,7 +192,8 @@ def list_files(dir_path=theano.__path__[0], pattern='*.py'):
         for f in files:
             if fnmatch(f, pattern):
                 path = os.path.join(dir, f)
-                files_list.append(path)
+                if not f.startswith(no_match):
+                    files_list.append(path)
     return files_list
 
 

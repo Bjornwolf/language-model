@@ -878,7 +878,7 @@ pre-defined macros.  These section tags have no macros: ``init_code``,
 discussed below.
 
 *      ``APPLY_SPECIFIC(str)`` which will automatically append a name
-       unique to the :ref:`Apply node that applies the Op at the end
+       unique to the :ref:`Apply` node that applies the Op at the end
        of the provided ``str``. The use of this macro is discussed
        futher below.
 
@@ -924,8 +924,8 @@ In addition to these macros, the ``init_code_struct``, ``code``, and
       You can add a semicolon after the macro if it makes your editor
       happy.
 
-*     ``CONTEXT`` : Name of the context variable for this node.  (only
-      for Ops which have a context, which is discussed elsewhere)
+*     ``PARAMS`` : Name of the params variable for this node.  (only
+      for Ops which have params, which is discussed elsewhere)
 
 Finally the tag ``code`` and ``code_cleanup`` have macros to
 pass the inputs and output names.  These are name ``INPUT_{i}`` and

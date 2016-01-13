@@ -29,10 +29,10 @@ if (APPLY_SPECIFIC(output) != NULL) { cudnnDestroyTensorDescriptor(APPLY_SPECIFI
 
 int APPLY_SPECIFIC(dnn_pool)(PyGpuArrayObject *img,
                              cudnnPoolingDescriptor_t desc,
-                             PyGpuArrayObject **out) {
+                             PyGpuArrayObject **out,
+                             PyGpuContextObject *c) {
   cudnnStatus_t err;
   size_t dims[5];
-  PyGpuContextObject *c = pygpu_default_context();
 
   if (!GpuArray_IS_C_CONTIGUOUS(&img->ga)) {
     PyErr_SetString(PyExc_ValueError, "Only contiguous inputs are supported.");
@@ -93,12 +93,20 @@ int APPLY_SPECIFIC(dnn_pool)(PyGpuArrayObject *img,
     }
 
     cuda_enter(c->ctx);
+
+    cuda_wait(img->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_wait((*out)->ga.data, GPUARRAY_CUDA_WAIT_WRITE);
+
     err = cudnnPoolingForward(
       APPLY_SPECIFIC(_handle), desc,
       alpha,
       APPLY_SPECIFIC(input), PyGpuArray_DEV_DATA(img),
       beta,
       APPLY_SPECIFIC(output), PyGpuArray_DEV_DATA(*out));
+
+    cuda_record(img->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_record((*out)->ga.data, GPUARRAY_CUDA_WAIT_WRITE);
+
     cuda_exit(c->ctx);
   }
   if (err != CUDNN_STATUS_SUCCESS) {

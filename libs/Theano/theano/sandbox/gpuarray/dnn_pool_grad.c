@@ -53,9 +53,9 @@ int APPLY_SPECIFIC(dnn_pool_grad)(PyGpuArrayObject *inp,
                                   PyGpuArrayObject *out,
                                   PyGpuArrayObject *out_grad,
                                   cudnnPoolingDescriptor_t desc,
-                                  PyGpuArrayObject **inp_grad) {
+                                  PyGpuArrayObject **inp_grad,
+                                  PyGpuContextObject *c) {
   cudnnStatus_t err;
-  PyGpuContextObject *c = pygpu_default_context();
 
   if (!GpuArray_IS_C_CONTIGUOUS(&inp->ga)) {
     PyErr_SetString(PyExc_ValueError, "Only contiguous inputs are supported.");
@@ -81,7 +81,7 @@ int APPLY_SPECIFIC(dnn_pool_grad)(PyGpuArrayObject *inp,
 
   if (theano_prep_output(inp_grad, PyGpuArray_NDIM(inp),
                          PyGpuArray_DIMS(inp), inp->ga.typecode,
-                         GA_C_ORDER, pygpu_default_context()) != 0) {
+                         GA_C_ORDER, c) != 0) {
     return 1;
   }
 
@@ -111,6 +111,12 @@ int APPLY_SPECIFIC(dnn_pool_grad)(PyGpuArrayObject *inp,
     }
 
     cuda_enter(c->ctx);
+
+    cuda_wait(out->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_wait(out_grad->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_wait(inp->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_wait((*inp_grad)->ga.data, GPUARRAY_CUDA_WAIT_WRITE);
+
     err = cudnnPoolingBackward(
       APPLY_SPECIFIC(_handle), desc,
       alpha,
@@ -120,6 +126,12 @@ int APPLY_SPECIFIC(dnn_pool_grad)(PyGpuArrayObject *inp,
       beta,
       APPLY_SPECIFIC(input_grad), PyGpuArray_DEV_DATA(*inp_grad)
       );
+
+    cuda_record(out->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_record(out_grad->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_record(inp->ga.data, GPUARRAY_CUDA_WAIT_READ);
+    cuda_record((*inp_grad)->ga.data, GPUARRAY_CUDA_WAIT_WRITE);
+
     cuda_exit(c->ctx);
   }
 

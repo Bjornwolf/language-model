@@ -17,6 +17,7 @@ import tempfile
 import time
 import platform
 import distutils.sysconfig
+import warnings
 
 import numpy.distutils  # TODO: TensorType should handle this
 
@@ -324,7 +325,10 @@ def dlimport(fullpath, suffix=None):
             if hasattr(importlib, "invalidate_caches"):
                 importlib.invalidate_caches()
         t0 = time.time()
-        rval = __import__(module_name, {}, {}, [module_name])
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore",
+                                    message="numpy.ndarray size changed")
+            rval = __import__(module_name, {}, {}, [module_name])
         t1 = time.time()
         import_time += t1 - t0
         if not rval:
@@ -1264,8 +1268,11 @@ class ModuleCache(object):
     """
 
     def clear_old(self, age_thresh_del=None, delete_if_problem=False):
-        """
-        Delete entries from the filesystem for cache entries that are too old.
+        """Delete entries from the filesystem for cache entries that are too old.
+
+        This refreshes the content of the cache. Don't hold the lock
+        while calling this method, this is useless. It will be taken
+        if needed.
 
         Parameters
         ----------
@@ -1295,13 +1302,17 @@ class ModuleCache(object):
         else:
             age_thresh_use = None
 
+        too_old_to_use = self.refresh(
+            age_thresh_use=age_thresh_use,
+            delete_if_problem=delete_if_problem,
+            # The clean up is done at init, no need to trigger it again
+            cleanup=False)
+        if not too_old_to_use:
+            return
         with compilelock.lock_ctx():
             # Update the age of modules that have been accessed by other
             # processes and get all module that are too old to use
             # (not loaded in self.entry_from_key).
-            too_old_to_use = self.refresh(
-                age_thresh_use=age_thresh_use,
-                delete_if_problem=delete_if_problem)
 
             for entry in too_old_to_use:
                 # TODO: we are assuming that modules that haven't been
@@ -1372,11 +1383,16 @@ class ModuleCache(object):
                                         to_rename, to_delete)
 
     def clear_unversioned(self, min_age=None):
-        """
-        Delete unversioned dynamic modules.
+        """Delete unversioned dynamic modules.
 
         They are deleted both from the internal dictionaries and from the
         filesystem.
+
+        No need to have the lock when calling this method. It does not
+        take the lock as unversioned module aren't shared.
+
+        This method does not refresh the cache content, it just
+        accesses the in-memory known module(s).
 
         Parameters
         ----------
@@ -1388,86 +1404,99 @@ class ModuleCache(object):
         if min_age is None:
             min_age = self.age_thresh_del_unversioned
 
-        with compilelock.lock_ctx():
-            all_key_datas = list(self.module_hash_to_key_data.values())
-            for key_data in all_key_datas:
-                if not key_data.keys:
-                    # May happen for broken versioned keys.
-                    continue
-                for key_idx, key in enumerate(key_data.keys):
-                    version, rest = key
-                    if version:
-                        # Since the version is included in the module hash,
-                        # it should not be possible to mix versioned and
-                        # unversioned keys in the same KeyData object.
-                        assert key_idx == 0
-                        break
-                if not version:
-                    # Note that unversioned keys cannot be broken, so we can
-                    # set do_manual_check to False to speed things up.
-                    key_data.delete_keys_from(self.entry_from_key,
-                                              do_manual_check=False)
-                    entry = key_data.get_entry()
-                    # Entry is guaranteed to be in this dictionary, because
-                    # an unversioned entry should never have been loaded via
-                    # refresh.
-                    assert entry in self.module_from_name
+        # As this delete object that we build and other don't use, we
+        # don't need the lock.
+        all_key_datas = list(self.module_hash_to_key_data.values())
+        for key_data in all_key_datas:
+            if not key_data.keys:
+                # May happen for broken versioned keys.
+                continue
+            for key_idx, key in enumerate(key_data.keys):
+                version, rest = key
+                if version:
+                    # Since the version is included in the module hash,
+                    # it should not be possible to mix versioned and
+                    # unversioned keys in the same KeyData object.
+                    assert key_idx == 0
+                    break
+            if not version:
+                # Note that unversioned keys cannot be broken, so we can
+                # set do_manual_check to False to speed things up.
+                key_data.delete_keys_from(self.entry_from_key,
+                                          do_manual_check=False)
+                entry = key_data.get_entry()
+                # Entry is guaranteed to be in this dictionary, because
+                # an unversioned entry should never have been loaded via
+                # refresh.
+                assert entry in self.module_from_name
 
-                    del self.module_from_name[entry]
-                    del self.module_hash_to_key_data[key_data.module_hash]
+                del self.module_from_name[entry]
+                del self.module_hash_to_key_data[key_data.module_hash]
 
-                    parent = os.path.dirname(entry)
-                    assert parent.startswith(os.path.join(self.dirname, 'tmp'))
-                    _rmtree(parent, msg='unversioned', level=logging.INFO,
-                            ignore_nocleanup=True)
+                parent = os.path.dirname(entry)
+                assert parent.startswith(os.path.join(self.dirname, 'tmp'))
+                _rmtree(parent, msg='unversioned', level=logging.INFO,
+                        ignore_nocleanup=True)
 
-            # Sanity check: all unversioned keys should have been removed at
-            # this point.
-            for key in self.entry_from_key:
-                assert key[0]
+        # Sanity check: all unversioned keys should have been removed at
+        # this point.
+        for key in self.entry_from_key:
+            assert key[0]
 
-            time_now = time.time()
-            for filename in os.listdir(self.dirname):
-                if filename.startswith('tmp'):
-                    try:
-                        open(os.path.join(self.dirname, filename, 'key.pkl')
-                             ).close()
-                        has_key = True
-                    except IOError:
-                        has_key = False
-                    if not has_key:
-                        # Use the compiled file by default
-                        path = module_name_from_dir(os.path.join(self.dirname,
-                                                                 filename),
-                                                    False)
-                        # If it don't exist, use any file in the directory.
-                        if path is None:
-                            path = os.path.join(self.dirname, filename)
-                            files = os.listdir(path)
-                            if files:
-                                path = os.path.join(path, files[0])
-                            else:
-                                # If the directory is empty skip it.
-                                # They are deleted elsewhere.
-                                continue
-                        age = time_now - last_access_time(path)
+        to_del = []
+        time_now = time.time()
+        for filename in os.listdir(self.dirname):
+            if filename.startswith('tmp'):
+                try:
+                    fname = os.path.join(self.dirname, filename, 'key.pkl')
+                    open(fname).close()
+                    has_key = True
+                except IOError:
+                    has_key = False
+                if not has_key:
+                    # Use the compiled file by default
+                    path = module_name_from_dir(os.path.join(self.dirname,
+                                                             filename),
+                                                False)
+                    # If it don't exist, use any file in the directory.
+                    if path is None:
+                        path = os.path.join(self.dirname, filename)
+                        files = os.listdir(path)
+                        if files:
+                            path = os.path.join(path, files[0])
+                        else:
+                            # If the directory is empty skip it.
+                            # They are deleted elsewhere.
+                            continue
+                    age = time_now - last_access_time(path)
 
-                        # In normal case, the processus that created this
-                        # directory will delete it. However, if this processus
-                        # crashes, it will not be cleaned up.
-                        # As we don't know if this directory is still used,
-                        # we wait one week and suppose that the processus
-                        # crashed, and we take care of the clean-up.
-                        if age > min_age:
-                            _rmtree(os.path.join(self.dirname, filename),
-                                    msg='old unversioned', level=logging.INFO,
-                                    ignore_nocleanup=True)
+                    # In normal case, the processus that created this
+                    # directory will delete it. However, if this processus
+                    # crashes, it will not be cleaned up.
+                    # As we don't know if this directory is still used,
+                    # we wait one week and suppose that the processus
+                    # crashed, and we take care of the clean-up.
+                    if age > min_age:
+                        to_del.append(os.path.join(self.dirname, filename))
+
+        # No need to take the lock as it isn't shared.
+        for f in to_del:
+            _rmtree(f,
+                    msg='old unversioned', level=logging.INFO,
+                    ignore_nocleanup=True)
 
     def _on_atexit(self):
         # Note: no need to call refresh() since it is called by clear_old().
-        with compilelock.lock_ctx():
-            self.clear_old()
-            self.clear_unversioned()
+
+        # Note: no need to take the lock. For unversioned files, we
+        # don't need it as they aren't shared. For old unversioned
+        # files, this happen rarely, so we take the lock only when
+        # this happen.
+
+        # Note: for clear_old(), as this happen unfrequently, we only
+        # take the lock when it happen.
+        self.clear_old()
+        self.clear_unversioned()
         _logger.debug('Time spent checking keys: %s',
                       self.time_spent_in_check_key)
 
@@ -1623,6 +1652,16 @@ def std_lib_dirs_and_libs():
         # Typical include directory: /usr/include/python2.6
         libname = os.path.basename(python_inc)
         std_lib_dirs_and_libs.data = [libname], []
+
+    # sometimes, the linker cannot find -lpython so we need to tell it
+    # explicitly where it is located this returns
+    # somepath/lib/python2.x
+
+    python_lib = distutils.sysconfig.get_python_lib(plat_specific=1,
+                                                    standard_lib=1)
+    python_lib = os.path.dirname(python_lib)
+    if python_lib not in std_lib_dirs_and_libs.data[1]:
+        std_lib_dirs_and_libs.data[1].append(python_lib)
     return std_lib_dirs_and_libs.data
 std_lib_dirs_and_libs.data = None
 
@@ -2005,11 +2044,12 @@ class GCC_compiler(Compiler):
         # in the key of the compiled module, avoiding potential conflicts.
 
         # Figure out whether the current Python executable is 32
-        # or 64 bit and compile accordingly. This step is ignored for ARM
-        # architectures in order to make Theano compatible with the Raspberry
-        # Pi, and Raspberry Pi 2.
+        # or 64 bit and compile accordingly. This step is ignored for
+        # ARM (32-bit and 64-bit) architectures in order to make
+        # Theano compatible with the Raspberry Pi, Raspberry Pi 2, or
+        # other systems with ARM processors.
         if (not any(['arm' in flag for flag in cxxflags]) and
-                'arm' not in platform.machine()):
+                not any(arch in platform.machine() for arch in ['arm', 'aarch'])):
             n_bits = local_bitwidth()
             cxxflags.append('-m%d' % n_bits)
             _logger.debug("Compiling for %s bit architecture", n_bits)
@@ -2101,15 +2141,6 @@ class GCC_compiler(Compiler):
         include_dirs = include_dirs + std_include_dirs()
         libs = std_libs() + libs
         lib_dirs = std_lib_dirs() + lib_dirs
-
-        # sometimes, the linker cannot find -lpython so we need to tell it
-        # explicitly where it is located
-        # this returns somepath/lib/python2.x
-        python_lib = distutils.sysconfig.get_python_lib(plat_specific=1,
-                                                        standard_lib=1)
-        python_lib = os.path.dirname(python_lib)
-        if python_lib not in lib_dirs:
-            lib_dirs.append(python_lib)
 
         cppfilename = os.path.join(location, 'mod.cpp')
         cppfile = open(cppfilename, 'w')

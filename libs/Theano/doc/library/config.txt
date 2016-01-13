@@ -35,7 +35,7 @@ variables, type this from the command-line:
 
 .. code-block:: bash
 
-    python -c 'import theano; print theano.config' | less
+    python -c 'import theano; print(theano.config)' | less
 
 Environment Variables
 =====================
@@ -98,7 +98,7 @@ import theano and print the config variable, as in:
 
 .. code-block:: bash
 
-    python -c 'import theano; print theano.config' | less
+    python -c 'import theano; print(theano.config)' | less
 
 .. attribute:: device
 
@@ -174,6 +174,14 @@ import theano and print the config variable, as in:
 
     Print active device at when the GPU device is initialized.
 
+.. attribute:: enable_initial_driver_test
+
+    Bool value: either ``True`` or ``False``
+
+    Default: ``True``
+
+    Tests the nvidia driver when a GPU device is initialized.
+
 .. attribute:: floatX
 
     String value: either 'float64' or 'float32'
@@ -208,7 +216,7 @@ import theano and print the config variable, as in:
     significant speed up on functions with many ops that are fast to
     execute, but this increases Theano's memory usage.
 
-.. attribute:: scan.allow_output_prealloc
+.. attribute:: config.scan.allow_output_prealloc
 
     Bool value, either ``True`` or ``False``
 
@@ -218,6 +226,18 @@ import theano and print the config variable, as in:
     pre-allocate memory for its outputs. Enabling the optimization can
     give a significant speed up with Scan at the cost of slightly increased
     memory usage.
+
+.. attribute:: config.scan.allow_gc
+
+    Bool value, either ``True`` or ``False``
+
+    Default: ``False``
+
+    Allow/disallow gc inside of Scan.
+
+    If config.allow_gc is ``True``, but config.scan.allow_gc is
+    ``False``, then we will gc the inner of scan after all
+    iterations. This is the default.
 
 .. attribute:: openmp
 
@@ -445,7 +465,7 @@ import theano and print the config variable, as in:
     Default: 'ignore'
 
     If there is a CPU op in the computational graph, depending on its value;
-    this flag can either raise a warning, an exception or stop the 
+    this flag can either raise a warning, an exception or stop the
     compilation with pdb.
 
 .. attribute:: on_shape_error
@@ -505,7 +525,7 @@ import theano and print the config variable, as in:
     This is a Python format string that specifies the subdirectory
     of ``config.base_compiledir`` in which to store platform-dependent
     compiled modules. To see a list of all available substitution keys,
-    run ``python -c "import theano; print theano.config"``, and look
+    run ``python -c "import theano; print(theano.config)"``, and look
     for compiledir_format.
 
     This flag's value cannot be modified during the program execution.
@@ -612,7 +632,7 @@ import theano and print the config variable, as in:
     cost of precision.  This also disables support for denormal
     numbers.
 
-.. attribute:: optimizer_excluding
+.. attribute:: config.optimizer_excluding
 
     Default: ""
 
@@ -848,6 +868,13 @@ import theano and print the config variable, as in:
    As ``compute_test_value``, but it is the value used during Theano
    optimization phase. Theano user's do not need to use this. This is
    to help debug shape error in Theano optimization.
+
+.. attribute:: print_test_value
+
+    Bool value, default: False
+
+    If ``'True'``, Theano will override the '__str__' method of its variables
+    to also print the tag.test_value when this is available.
 
 .. attribute:: reoptimize_unpickled_function
 
