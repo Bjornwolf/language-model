@@ -1,4 +1,5 @@
 """A `Type` and `Op` classes to work with numpy.ndarrays symbolically."""
+from six.moves import builtins
 import sys
 import warnings
 
@@ -431,7 +432,7 @@ def constant(x, name=None, ndim=None, dtype=None):
         return ret
     sig = ret.signature()
     if (sig not in constant_cache and ret.data.size == 1 and
-        ret.data <= 10 and ret.data >= -10 and
+        (-10) <= ret.data <= 10 and
         (ret.dtype in int_dtypes or ret.dtype in uint_dtypes or
          (ret.dtype in float_dtypes and int(ret.data) == ret.data))):
         constant_cache[sig] = ret
@@ -763,11 +764,11 @@ def get_scalar_constant_value(orig_v, elemwise=True,
                     if not (idx < len(gp_broadcastable)):
                         msg = ("get_scalar_constant_value detected " +
                                "deterministic IndexError: x.shape[%d] " +
-                               "when x.ndim=%d.") % (ndim, idx)
+                               "when x.ndim=%d.") % (idx, ndim)
                         if config.exception_verbosity == 'high':
-                            msg += 'x=%s' % min_informative_str(v)
+                            msg += ' x=%s' % min_informative_str(v)
                         else:
-                            msg += 'x=%s' % str(v)
+                            msg += ' x=%s' % str(v)
                         raise ValueError(msg)
 
                     if gp_broadcastable[idx]:
@@ -1738,42 +1739,42 @@ def largest(*args):
 # Comparison
 ##########################
 
-@_scal_elemwise_with_nfunc('less', 2, 1)
+@_scal_elemwise
 def lt(a, b):
     """a < b"""
 
 
-@_scal_elemwise_with_nfunc('greater', 2, 1)
+@_scal_elemwise
 def gt(a, b):
     """a > b"""
 
 
-@_scal_elemwise_with_nfunc('less_equal', 2, 1)
+@_scal_elemwise
 def le(a, b):
     """a <= b"""
 
 
-@_scal_elemwise_with_nfunc('greater_equal', 2, 1)
+@_scal_elemwise
 def ge(a, b):
     """a >= b"""
 
 
-@_scal_elemwise_with_nfunc('equal', 2, 1)
+@_scal_elemwise
 def eq(a, b):
     """a == b"""
 
 
-@_scal_elemwise_with_nfunc('not_equal', 2, 1)
+@_scal_elemwise
 def neq(a, b):
     """a != b"""
 
 
-@_scal_elemwise_with_nfunc('isnan', 1, 1)
+@_scal_elemwise
 def isnan(a):
     """isnan(a)"""
 
 
-@_scal_elemwise_with_nfunc('isinf', 1, 1)
+@_scal_elemwise
 def isinf(a):
     """isinf(a)"""
 
@@ -1922,7 +1923,7 @@ def isclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
 # Condition
 ##########################
 
-@_scal_elemwise_with_nfunc('where', 3, 1)
+@_scal_elemwise
 def switch(cond, ift, iff):
     """if cond then ift else iff"""
 
@@ -1932,25 +1933,25 @@ where = switch
 ##########################
 
 
-@_scal_elemwise_with_nfunc('bitwise_and', 2, 1)
+@_scal_elemwise
 def and_(a, b):
     """bitwise a & b"""
 bitwise_and = and_  # numpy name for it
 
 
-@_scal_elemwise_with_nfunc('bitwise_or', 2, 1)
+@_scal_elemwise
 def or_(a, b):
     """bitwise a | b"""
 bitwise_or = or_  # numpy name for it
 
 
-@_scal_elemwise_with_nfunc('bitwise_xor', 2, 1)
+@_scal_elemwise
 def xor(a, b):
     """bitwise a ^ b"""
 bitwise_xor = xor  # numpy name for it
 
 
-@_scal_elemwise_with_nfunc('invert', 1, 1)
+@_scal_elemwise
 def invert(a):
     """bitwise ~a"""
 bitwise_not = invert  # numpy alias for it
@@ -1960,7 +1961,7 @@ bitwise_not = invert  # numpy alias for it
 # Math
 ##########################
 
-@_scal_elemwise_with_nfunc('abs', 1, 1)
+@_scal_elemwise
 def abs_(a):
     """|`a`|
 
@@ -1972,22 +1973,22 @@ def abs_(a):
 pprint.assign(abs_, printing.PatternPrinter(('|%(0)s|', -1000)))
 
 
-@_scal_elemwise_with_nfunc('exp', 1, 1)
+@_scal_elemwise
 def exp(a):
     """e^`a`"""
 
 
-@_scal_elemwise_with_nfunc('exp2', 1, 1)
+@_scal_elemwise
 def exp2(a):
     """2^`a`"""
 
 
-@_scal_elemwise_with_nfunc('expm1', 1, 1)
+@_scal_elemwise
 def expm1(a):
     """e^`a` - 1"""
 
 
-@_scal_elemwise_with_nfunc('negative', 1, 1)
+@_scal_elemwise
 def neg(a):
     """-a"""
 
@@ -1999,42 +2000,42 @@ def inv(a):
     """1.0/a"""
 
 
-@_scal_elemwise_with_nfunc('log', 1, 1)
+@_scal_elemwise
 def log(a):
     """base e logarithm of a"""
 
 
-@_scal_elemwise_with_nfunc('log2', 1, 1)
+@_scal_elemwise
 def log2(a):
     """base 2 logarithm of a"""
 
 
-@_scal_elemwise_with_nfunc('log10', 1, 1)
+@_scal_elemwise
 def log10(a):
     """base 10 logarithm of a"""
 
 
-@_scal_elemwise_with_nfunc('log1p', 1, 1)
+@_scal_elemwise
 def log1p(a):
     """log(1+a)"""
 
 
-@_scal_elemwise_with_nfunc('sign', 1, 1)
+@_scal_elemwise
 def sgn(a):
     """sign of a"""
 
 
-@_scal_elemwise_with_nfunc('ceil', 1, 1)
+@_scal_elemwise
 def ceil(a):
     """ceiling of a"""
 
 
-@_scal_elemwise_with_nfunc('floor', 1, 1)
+@_scal_elemwise
 def floor(a):
     """floor of a"""
 
 
-@_scal_elemwise_with_nfunc('trunc', 1, 1)
+@_scal_elemwise
 def trunc(a):
     """trunc of a"""
 
@@ -2056,7 +2057,7 @@ def round(a, mode="half_away_from_zero"):
         raise Exception("round mode %s is not implemented." % mode)
 
 
-@_scal_elemwise_with_nfunc('around', 1, 1)
+@_scal_elemwise
 def round_half_to_even(a):
     """round_half_to_even(a)"""
 
@@ -2066,7 +2067,7 @@ def round_half_away_from_zero(a):
     """round_half_away_from_zero(a)"""
 
 
-@_scal_elemwise_with_nfunc('square', 1, 1)
+@_scal_elemwise
 def sqr(a):
     """square of a"""
 
@@ -2075,82 +2076,82 @@ def sqr(a):
 square = sqr
 
 
-@_scal_elemwise_with_nfunc('sqrt', 1, 1)
+@_scal_elemwise
 def sqrt(a):
     """square root of a"""
 
 
-@_scal_elemwise_with_nfunc('deg2rad', 1, 1)
+@_scal_elemwise
 def deg2rad(a):
     """convert degree a to radian"""
 
 
-@_scal_elemwise_with_nfunc('rad2deg', 1, 1)
+@_scal_elemwise
 def rad2deg(a):
     """convert radian a to degree"""
 
 
-@_scal_elemwise_with_nfunc('cos', 1, 1)
+@_scal_elemwise
 def cos(a):
     """cosine of a"""
 
 
-@_scal_elemwise_with_nfunc('arccos', 1, 1)
+@_scal_elemwise
 def arccos(a):
     """arccosine of a"""
 
 
-@_scal_elemwise_with_nfunc('sin', 1, 1)
+@_scal_elemwise
 def sin(a):
     """sine of a"""
 
 
-@_scal_elemwise_with_nfunc('arcsin', 1, 1)
+@_scal_elemwise
 def arcsin(a):
     """arcsine of a"""
 
 
-@_scal_elemwise_with_nfunc('tan', 1, 1)
+@_scal_elemwise
 def tan(a):
     """tangent of a"""
 
 
-@_scal_elemwise_with_nfunc('arctan', 1, 1)
+@_scal_elemwise
 def arctan(a):
     """arctangent of a"""
 
 
-@_scal_elemwise_with_nfunc('arctan2', 1, 1)
+@_scal_elemwise
 def arctan2(a, b):
     """arctangent of a / b"""
 
 
-@_scal_elemwise_with_nfunc('cosh', 1, 1)
+@_scal_elemwise
 def cosh(a):
     """hyperbolic cosine of a"""
 
 
-@_scal_elemwise_with_nfunc('arccosh', 1, 1)
+@_scal_elemwise
 def arccosh(a):
     """hyperbolic arc cosine of a"""
 
 
-@_scal_elemwise_with_nfunc('sinh', 1, 1)
+@_scal_elemwise
 def sinh(a):
     """hyperbolic sine of a"""
 
 
-@_scal_elemwise_with_nfunc('arcsinh', 1, 1)
+@_scal_elemwise
 def arcsinh(a):
     """hyperbolic arc sine of a"""
 
 
-@_scal_elemwise_with_nfunc('tanh', 1, 1)
+@_scal_elemwise
 def tanh(a):
     """hyperbolic tangent of a"""
 
 
-@_scal_elemwise_with_nfunc('arctanh', 1, 1)
+@_scal_elemwise
 def arctanh(a):
     """hyperbolic arc tangent of a"""
 
@@ -2200,21 +2201,19 @@ def chi2sf(x, k):
     """chi squared survival function"""
 
 
-# numpy.real(float32) return a view on the inputs.
-# @_scal_elemwise_with_nfunc('real', 1, 1)
 @_scal_elemwise
 def real(z):
     """Return real component of complex-valued tensor `z`"""
 _tensor_py_operators.real = property(real)
 
 
-@_scal_elemwise_with_nfunc('imag', 1, 1)
+@_scal_elemwise
 def imag(z):
     """Return imaginary component of complex-valued tensor `z`"""
 _tensor_py_operators.imag = property(imag)
 
 
-@_scal_elemwise_with_nfunc('angle', 1, 1)
+@_scal_elemwise
 def angle(z):
     """Return polar-coordinate angle of complex-valued tensor `z`"""
 
@@ -2224,7 +2223,7 @@ def complex(real, imag):
     """Return complex-valued tensor with `real` and `imag` components"""
 
 
-@_scal_elemwise_with_nfunc('conj', 1, 1)
+@_scal_elemwise
 def conj(z):
     """Return the complex conjugate of `z`."""
 
@@ -2654,20 +2653,26 @@ class Alloc(gof.Op):
         sh = [as_tensor_variable(s) for s in shape]
         bcast = []
         for i, s in enumerate(sh):
+            if config.exception_verbosity == 'high':
+                s_as_str = '\n' + min_informative_str(s)
+            else:
+                s_as_str = str(s)
             if s.type.dtype[:3] not in ('int', 'uin'):
-                if config.exception_verbosity == 'high':
-                    s_as_str = '\n' + min_informative_str(s)
-                else:
-                    s_as_str = str(s)
                 raise TypeError('Shape arguments to Alloc must be integers, '
                                 'but argument %s is not for apply node: %s' %
                                 (i, s_as_str))
+            if s.ndim != 0:
+                raise TypeError(
+                    "Each shape dimension to Alloc must be a scalar, ",
+                    'but dimension %s have %d dimensions for apply node: %s' %
+                    (i, s.ndim, s_as_str))
+
             # if s is constant 1, then we're broadcastable in that dim
             try:
                 const_shp = get_scalar_constant_value(s)
             except NotScalarConstantError:
                 const_shp = None
-            bcast.append(numpy.all(1 == const_shp))
+            bcast.append(1 == const_shp)
         return sh, bcast
 
     def make_node(self, value, *shape):
@@ -2844,10 +2849,45 @@ class Alloc(gof.Op):
                 return False
         return True
 
-
 alloc = Alloc()
 pprint.assign(alloc, printing.FunctionPrinter('alloc'))
 
+
+def transfer(var, target):
+    """
+    Return a version of `var` transferred to `target`.
+
+    `cpu` mean a TensorType (on the CPU).  Other types may define
+    additional targets.
+
+    Parameters
+    ----------
+    var : variable
+        A theano variable
+    target : str
+        The target of the transfer
+    """
+    if target == 'cpu':
+        return as_tensor_variable(var)
+    else:
+        for trans in transfer._others:
+            res = trans(var, target)
+            if res is not None:
+                return res
+    raise ValueError("Can't transfer to target %s" % (target,))
+
+transfer._others = []
+
+
+def register_transfer(fn):
+    """
+    Register a transfer function for alternative targets.
+
+    Parameters
+    ----------
+    fn : callable
+    """
+    transfer._others.append(fn)
 
 """Create a duplicate of `a` (with duplicated storage)"""
 tensor_copy = elemwise.Elemwise(scal.identity)
@@ -2986,7 +3026,7 @@ def mean(input, axis=None, dtype=None, op=False, keepdims=False,
     For gpu, if you specify dtype=float32, everything will be done on the gpu.
 
     """
-
+    input = as_tensor_variable(input)
     if op:
         if dtype not in (None, 'float64'):
             raise NotImplementedError(
@@ -3160,13 +3200,13 @@ setdefault = default  # legacy
 ##########################
 # Arithmetics
 ##########################
-@_scal_elemwise_with_nfunc('maximum', 2, 1)
+@_scal_elemwise
 def maximum(x, y):
     """elemwise maximum. See max for the maximum in one tensor"""
     # see decorator for function body
 
 
-@_scal_elemwise_with_nfunc('minimum', 2, 1)
+@_scal_elemwise
 def minimum(x, y):
     """elemwise minimum. See min for the minimum in one tensor"""
     # see decorator for function body
@@ -3185,31 +3225,31 @@ def divmod(x, y):
     return floor_div(x, y), mod_check(x, y)
 
 
-@_scal_elemwise_with_nfunc('add', 2, 1)
+@_scal_elemwise
 def add(a, *other_terms):
     """elementwise addition"""
     # see decorator for function body
 
 
-@_scal_elemwise_with_nfunc('subtract', 2, 1)
+@_scal_elemwise
 def sub(a, b):
     """elementwise subtraction"""
     # see decorator for function body
 
 
-@_scal_elemwise_with_nfunc('multiply', 2, 1)
+@_scal_elemwise
 def mul(a, *other_terms):
     """elementwise multiplication"""
     # see decorator for function body
 
 
-@_scal_elemwise_with_nfunc('true_divide', 2, 1)
+@_scal_elemwise
 def true_div(a, b):
     """elementwise [true] division (inverse of multiplication)"""
     # see decorator for function body
 
 
-@_scal_elemwise_with_nfunc('floor_divide', 2, 1)
+@_scal_elemwise
 def int_div(a, b):
     """elementwise [floor] division (inverse of multiplication)"""
     # see decorator for function body
@@ -3250,20 +3290,18 @@ def mod_check(x, y):
         return mod(x, y)
 
 
-@_scal_elemwise_with_nfunc('mod', 2, 1)
+@_scal_elemwise
 def mod(a, b):
     """elementwise modulo"""
     # see decorator for function body
 
 
-@_scal_elemwise_with_nfunc('power', 2, 1)
+@_scal_elemwise
 def pow(a, b):
     """elementwise power"""
     # see decorator for function body
 
 
-# The numpy.clip don't work correctly when the min is bigger then the max,
-# So we do not use @scal_elemwise_with_nfunc('clip', 3, 1)
 @_scal_elemwise
 def clip(x, min, max):
     """
@@ -3869,6 +3907,14 @@ class Join(Op):
             assert shp is not None
             assert len(shp) == n_dim
 
+        # The joining dimension could be negative, but we need it to be
+        # in [0, n_dim) in the loop below.
+        # An axis < -n_dim or >= ndim would be invalid, but this is
+        # not checked here. An Assert op would be a way of addressing that,
+        # but it may disrupt optimizations.
+        join_dim = switch(ge(node.inputs[0], 0),
+                          node.inputs[0],
+                          node.inputs[0] + n_dim)
         out_shapes = []
         for dim in xrange(n_dim):
             # we have to deal with 2 possible cases in here :
@@ -3886,7 +3932,7 @@ class Join(Op):
             for shp in ishapes[2:]:
                 t_side = t_side + shp[dim]
             # return the dimensions found
-            out_shapes.append(switch(eq(dim, node.inputs[0]),
+            out_shapes.append(switch(eq(dim, join_dim),
                               t_side, f_side))
 
         return [tuple(out_shapes)]
@@ -3922,7 +3968,7 @@ pprint.assign(lambda pstate, r: r.owner and isinstance(r.owner.op, Join),
 
 def roll(x, shift, axis=None):
     """
-    Convenience function to roll `TensorType`s along the given axis.
+    Convenience function to roll TensorTypes along the given axis.
 
     Syntax copies numpy.roll function.
 
@@ -3940,7 +3986,7 @@ def roll(x, shift, axis=None):
     Returns
     -------
     tensor
-        Output tensor, with the same shape as `x`.
+        Output tensor, with the same shape as ``x``.
 
     """
     if axis is None:
@@ -4184,7 +4230,8 @@ def get_vector_length(v):
     """
     v = as_tensor_variable(v)
     if v.ndim != 1:
-        raise TypeError('argument must be symbolic vector')
+        raise TypeError("argument must be symbolic vector, got '%s'" %
+                        v)
     if v.type.broadcastable[0]:
         return 1
     if isinstance(v, gof.Constant) and v.type.ndim == 1:
@@ -4196,18 +4243,40 @@ def get_vector_length(v):
     # If we take a slice, we know how many elements it will result in
     if ((v.owner and
          isinstance(v.owner.op, theano.tensor.subtensor.Subtensor) and
-         isinstance(v.owner.op.idx_list[0], slice))):
+         isinstance(v.owner.op.idx_list[0], slice) and
+         v.owner.inputs[0].owner and
+         isinstance(v.owner.inputs[0].owner.op, theano.compile.ops.Shape))):
         start = extract_constant(theano.tensor.subtensor.get_idx_list(
             v.owner.inputs, v.owner.op.idx_list)[0].start)
         stop = extract_constant(theano.tensor.subtensor.get_idx_list(
             v.owner.inputs, v.owner.op.idx_list)[0].stop)
+        step = extract_constant(theano.tensor.subtensor.get_idx_list(
+            v.owner.inputs, v.owner.op.idx_list)[0].step)
+
+        ndim = v.owner.inputs[0].owner.inputs[0].ndim
+        types = (numbers.Integral, numpy.integer)
         if start is None:
             start = 0
+        elif isinstance(start, types) and start < 0:
+            start += ndim
+            if start < 0:
+                start = 0
         if stop is None:
-            stop = 0
-        if ((isinstance(stop, numbers.Integral) and
-             isinstance(start, numbers.Integral))):
-            return stop - start
+            stop = ndim
+        elif isinstance(stop, types):
+            if stop > ndim:
+                stop = ndim
+            elif stop < 0:
+                stop += ndim
+        if step is None:
+            step = 1
+
+        if (isinstance(stop, types) and
+                isinstance(start, types) and
+                isinstance(step, types) and
+                start >= 0 and stop >= 0 and
+                step > 0 and stop >= start):
+            return (stop - start - 1) // step + 1
     if isinstance(v, Variable):
         msg = theano.printing.debugprint(v, file='str')
     else:
@@ -4354,6 +4423,11 @@ class Reshape(Op):
         # Here, we only simplify if the shape (node.inputs[1]) is a constant,
         # ideally it would suffice to check that it is always non-negative.
 
+        # If current variable is a scalar and its dimensionality should
+        # change to self.ndim, then use size 1 for all new dimensions.
+        if len(ishapes[0]) == 0:
+            return [(1,) * self.ndim]
+
         requ = node.inputs[1]
         if isinstance(requ, theano.tensor.TensorConstant):
             requ = list(requ.data)
@@ -4365,23 +4439,23 @@ class Reshape(Op):
                     if ele == -1:
                         requ[i] = missing
             elif crit == 1:  # we reshape to -1
-                requ = [mul(*ishapes[0])]
+                requ = [mul(*ishapes[0])] if ishapes[0] else [1]
             elif crit > 1:
                 raise ValueError('shape argument to Reshape.perform'
                                  ' must have at most one entry equal to -1')
             return [requ]
         else:
-            oshape = []
-            for i in xrange(self.ndim):
-                default_os_i = theano.tensor.opt.Shape_i(i)(node.outputs[0])
-                try:
-                    os_i = get_scalar_constant_value(node.inputs[1][i]).item()
-                    if os_i == -1:
-                        os_i = default_os_i
-                except NotScalarConstantError:
-                    os_i = default_os_i
-                oshape.append(os_i)
-            return [tuple(oshape)]
+            new_dims = [node.inputs[1][i] for i in xrange(self.ndim)]
+            # since new_dims has one negative value (-1), the
+            # multiplication of all values should be negated
+            # to give a positive value.
+            # To avoid optimization complexity, we avoid checking
+            # for the case when there are two or more '-1' values.
+            return [tuple([switch(eq(new_dims[i], -1),
+                                  theano.tensor.mul(*ishapes[0]) //
+                                  (-theano.tensor.mul(*new_dims)),
+                                  new_dims[i])
+                           for i in xrange(self.ndim)])]
 
     def c_code_cache_version(self):
         return (6,)
@@ -4433,6 +4507,11 @@ class Reshape(Op):
 
 def reshape(x, newshape, ndim=None, name=None):
     if ndim is None:
+        newshape = as_tensor_variable(newshape)
+        if newshape.ndim != 1:
+            raise TypeError(
+                "New shape in reshape must be a vector or a list/tuple of"
+                " scalar. Got %s after conversion to a vector." % newshape)
         try:
             ndim = get_vector_length(newshape)
         except ValueError:
@@ -4454,6 +4533,7 @@ class Flatten(Op):
     Flattens a tensor to `outdim` dimensions by preserving the leading
     outdim - 1 shape components.
 
+    .. note:: The interface Flatten(Op) is deprecated, you should use flatten.
     """
     view_map = {0: [0]}
 
@@ -4461,6 +4541,11 @@ class Flatten(Op):
     __props__ = ("outdim",)
 
     def __init__(self, outdim=1):
+        warnings.warn(
+            "Flatten class is deprecated, "
+            "please use flatten method instead.",
+            DeprecationWarning,
+            stacklevel=4)
         self.outdim = int(outdim)
 
     def __str__(self):
@@ -4599,8 +4684,70 @@ class Flatten(Op):
         """ % locals()
 
 
+def is_flat(var, outdim=1):
+    """
+    Verifies the dimensionality of the var is equal to
+    outdim. This method is usually called after flatten method on a
+    variable, where the first outdim-1 dimension size(s) of the variable
+    is kept intact, and the last dimension size of the variable is made
+    equal to the multiplication of its remaining dimension size(s), such that
+    the variable would end up with as many dimension as outdim.
+
+    Parameters
+    ----------
+        var : theano.tensor.var.TensorVariable
+            the theano var on which the dimensionality is checked.
+
+        outdim : int
+            the expected dimensionality of var.
+
+    Returns
+    -------
+    bool
+        the comparison result of var's dim
+        and the expected outdim.
+    """
+    return var.ndim == outdim
+
+
 def flatten(x, outdim=1):
-    return Flatten(outdim)(x)
+    """
+    Reshapes the variable x by keeping
+    the first outdim-1 dimension size(s) of x the same,
+    and making the last dimension size of x equal to
+    the multiplication of its remaining dimension size(s).
+
+    Parameters
+    ----------
+        x : theano.tensor.var.TensorVariable
+            the variable that should be reshaped.
+
+        outdim : int
+            the number of dimensions of the returned variable
+
+    Returns
+    -------
+    theano.tensor.var.TensorVariable
+        the flattend variable with dimensionality of outdim
+    """
+    # Any input variable can be flattened to have outdim of 1,
+    # even if it's a scalar. Otherwise, outdim must be positive
+    # and smaller than x.ndim.
+    if outdim < 1 or (outdim > 1 and outdim > x.ndim):
+        raise ValueError('outdim %s out of bound [1, %d)'
+                         % (outdim, x.ndim + 1))
+
+    if outdim > 1:
+        dims = tuple(x.shape[:outdim - 1]) + (-1,)
+    else:
+        dims = (-1,)
+    x_reshaped = x.reshape(dims)
+    bcast_kept_dims = x.broadcastable[:outdim - 1]
+    bcast_new_dim = python_all(x.broadcastable[outdim - 1:])
+    broadcastable = bcast_kept_dims + (bcast_new_dim,)
+    x_reshaped = theano.tensor.addbroadcast(
+        x_reshaped, *filter(lambda i: broadcastable[i], range(outdim)))
+    return x_reshaped
 
 
 # class TileGrad(Op):
@@ -4705,32 +4852,67 @@ def tile(x, reps, ndim=None):
 
     See the docstring of `numpy.tile` for details.
 
-    Currently, x.ndim and len(reps) must be equal, and, if specified, 'ndim'
-    must be equal to both.
+    'reps' can be constant integer (e.g. 3), constant vector(e.g. [2 3]),
+    symbolic scalar (e.g. tensor.iscalar()), symbolic vector (e.g. tensor.ivector())
+    or a list of symbolic scalar (e.g. [tensor.iscalar(), tensor.iscalar()]).
 
-    TODO: expand this.
+    ndim is the number of the dimensions of the output, if it is provided, ndim
+    should be equal or larger than x.ndim and len(reps), otherwise, we will use
+    max(x.ndim, len(reps)) as ndim. If reps is symbolic vector, the ndim has to
+    be provided.
 
     """
 
-    try:
-        iter(reps)
-    except TypeError:
-        raise ValueError("reps must be iterable")
-    if not numpy.all([isinstance(r, integer_types) or
-                      (isinstance(r, TensorVariable) and
-                      r.dtype in ["int8", "int16", "int32", "int64"])
-                      for r in reps]):
-        raise ValueError("elements of reps must be scalars of integer dtype")
-    elif len(reps) != x.ndim:
-        raise ValueError("len(reps) != x.ndim not currently supported")
-    elif (ndim is not None) and ndim != x.ndim:
-        raise ValueError("if specified, ndim must be equal to both x.ndim and "
-                         "len(reps)")
+    if ndim is not None and ndim < x.ndim:
+        raise ValueError("ndim should be equal or larger than x.ndim")
 
-    if ndim is None:
-        ndim = len(reps)
+    # if reps is tensor.scalar, integer or tensor.vector, we convert it to a list.
+    if not isinstance(reps, (list, tuple)):
+        reps_astensor = as_tensor_variable(reps)
+        ndim_check = reps_astensor.ndim
+        if reps_astensor.dtype not in theano.tensor.discrete_dtypes:
+            raise ValueError("elements of reps must be integer dtype")
+
+        # tensor.scalar/integer case
+        if ndim_check == 0:
+            reps = [reps]
+
+        # tensor.vector case
+        elif ndim_check == 1:
+            if ndim is None:
+                raise ValueError("if reps is tensor.vector, you should specify "
+                                 "the ndim")
+            else:
+                offset = ndim - reps.shape[0]
+
+                # assert that reps.shape[0] does not exceed ndim
+                offset = theano.tensor.opt.assert_(offset, ge(offset, 0))
+
+                # if reps.ndim is less than x.ndim, we pad the reps with
+                # "1" so that reps will have the same ndim as x.
+                reps_ = [switch(i < offset, 1, reps[i - offset]) for i in range(ndim)]
+                reps = reps_
+
+        # other raise error
+        else:
+            raise ValueError("the dimension of reps should not exceed 1")
+    else:
+        if ndim is not None and len(reps) > ndim:
+            raise ValueError("len(reps) should be equal or less than ndim")
+        if not numpy.all([isinstance(r, integer_types) or
+                          (isinstance(r, TensorVariable) and
+                           r.dtype in theano.tensor.discrete_dtypes) for r in reps]):
+            raise ValueError("elements of reps must be scalars of integer dtype")
+
+    # if reps.ndim is less than x.ndim, we pad the reps with
+    # "1" so that reps will have the same ndim as x.
     reps = list(reps)
-    shape = [x.shape[i] for i in xrange(ndim)]
+    if ndim is None:
+        ndim = builtins.max(len(reps), x.ndim)
+    if len(reps) < ndim:
+        reps = [1] * (ndim - len(reps)) + reps
+
+    shape = [1] * (ndim - x.ndim) + [x.shape[i] for i in xrange(x.ndim)]
     alloc_shape = reps + shape
     y = alloc(x, *alloc_shape)
     shuffle_ind = numpy.arange(ndim * 2).reshape(2, ndim)
@@ -6031,7 +6213,7 @@ class AllocEmpty(gof.Op):
                 const_shp = get_scalar_constant_value(s)
             except NotScalarConstantError:
                 const_shp = None
-            bcast.append(numpy.all(1 == const_shp))
+            bcast.append(1 == const_shp)
         otype = TensorType(dtype=self.dtype, broadcastable=bcast)
         output = otype()
         return sh, output
@@ -6093,3 +6275,12 @@ class AllocEmpty(gof.Op):
 
     def do_constant_folding(self, node):
         return False
+
+    def connection_pattern(self, node):
+        return [[False] for i in node.inputs]
+
+    def grad(self, inputs, grads):
+        return [DisconnectedType()() for i in inputs]
+
+    def R_op(self, inputs, eval_points):
+        return [zeros(inputs, self.dtype)]

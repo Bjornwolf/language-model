@@ -279,8 +279,7 @@ def test_pooling():
                     a = f1(data).__array__()
 
                     b = f2(data).__array__()
-                    assert numpy.allclose(a, b,
-                                          atol=numpy.finfo(numpy.float32).eps)
+                    utt.assert_allclose(a, b)
 
         # Test the grad
         for shp in [(1, 1, 2, 2),
@@ -338,7 +337,7 @@ def test_pooling():
                 assert any([isinstance(node.op, AveragePoolGrad)
                             for node in fc.maker.fgraph.toposort()])
             c_out = fc(data)
-            assert numpy.allclose(c_out, g_out)
+            utt.assert_allclose(c_out, g_out)
 
 
 def test_pooling3d():
@@ -443,7 +442,7 @@ def test_pooling3d():
             fc = theano.function([x], theano.grad(out.sum(), x),
                                  mode=mode_without_gpu)
             c_out = fc(data)
-            assert numpy.allclose(c_out, g_out)
+            utt.assert_allclose(c_out, g_out)
 
 
 def test_pooling_opt():
@@ -1083,6 +1082,80 @@ def test_dnn_conv_alpha_output_merge():
         utt.assert_allclose(v1, v2)
 
 
+def test_dnn_conv3d_alpha_output_merge():
+    if not cuda.dnn.dnn_available():
+        raise SkipTest(cuda.dnn.dnn_available.msg)
+    t = T.TensorType(broadcastable=(False, False, False, False, False),
+                     dtype='float32')
+
+    img = t()
+    kern = t()
+    out = t()
+
+    b = 1
+    c = 4
+    f = 3
+    it = 10
+    ih = 5
+    iw = 8
+    kt = 3
+    kh = 2
+    kw = 6
+    img_val = numpy.random.random((b, c, it, ih, iw)).astype('float32')
+    kern_val = numpy.random.random((f, c, kt, kh, kw)).astype('float32')
+    out_val = numpy.random.random((b, f, it - kt + 1, ih - kh + 1,
+                                   iw - kw + 1)).astype('float32')
+
+    conv = dnn.dnn_conv3d(img, kern)
+    gw = theano.grad(conv.sum(), kern)
+    gi = theano.grad(conv.sum(), img)
+
+    lr = numpy.asarray(0.05, dtype='float32')
+
+    if cuda.dnn.version() == -1:
+        # Can't merge alpha with cudnn v1
+        fr = conv + out
+        wr = kern + gw
+        ir = img + gi
+    else:
+        fr = lr * (conv + out)
+        wr = kern + lr * gw
+        ir = img + lr * gi
+
+    f1 = theano.function([img, kern, out], [fr, wr, ir], mode=mode_with_gpu)
+    assert isinstance(f1.maker.fgraph.outputs[0].owner.inputs[0].owner.op,
+                      dnn.GpuDnnConv)
+    assert isinstance(f1.maker.fgraph.outputs[1].owner.inputs[0].owner.op,
+                      dnn.GpuDnnConvGradW)
+    assert isinstance(f1.maker.fgraph.outputs[2].owner.inputs[0].owner.op,
+                      dnn.GpuDnnConvGradI)
+
+    mode = mode_with_gpu
+    mode = mode.excluding('local_dnn_conv_alpha_merge')
+    mode = mode.excluding('local_dnn_convw_alpha_merge')
+    mode = mode.excluding('local_dnn_convi_alpha_merge')
+    mode = mode.excluding('local_dnn_conv_output_merge')
+    mode = mode.excluding('local_dnn_convw_output_merge')
+    mode = mode.excluding('local_dnn_convi_output_merge')
+
+    f2 = theano.function([img, kern, out], [fr, wr, ir], mode=mode)
+
+    assert not isinstance(f2.maker.fgraph.outputs[0].owner.inputs[0].owner.op,
+                          dnn.GpuDnnConv3d)
+    assert not isinstance(f2.maker.fgraph.outputs[1].owner.inputs[0].owner.op,
+                          dnn.GpuDnnConv3dGradW)
+    assert not isinstance(f2.maker.fgraph.outputs[2].owner.inputs[0].owner.op,
+                          dnn.GpuDnnConv3dGradI)
+
+    out_f1 = f1(img_val, kern_val, out_val)
+    out_f2 = f2(img_val, kern_val, out_val)
+
+    assert len(out_f1) == len(out_f2)
+
+    for v1, v2 in zip(out_f1, out_f2):
+        utt.assert_allclose(v1, v2)
+
+
 def test_dnn_conv_merge_mouts():
     # make sure it doesn't attempt to output/alpha merge a convolution
     # that has multiple clients.
@@ -1357,8 +1430,10 @@ def test_conv3d_bwd():
         # Compare the results of the two implementations
         res_ref = f_ref()
         res = f()
-        utt.assert_allclose(res_ref[0], res[0])
-        utt.assert_allclose(res_ref[1], res[1])
+        # Needed for big size for some seed
+        # raise rtol to make the test pass with more seed.
+        utt.assert_allclose(res_ref[0], res[0], rtol=2e-5)
+        utt.assert_allclose(res_ref[1], res[1], rtol=2e-5)
 
     test_cases = get_conv3d_test_cases()
     for (i_shape, f_shape, subsample), border_mode, conv_mode in test_cases:

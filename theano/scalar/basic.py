@@ -199,7 +199,11 @@ class Scalar(Type):
                 type(data), data, self.dtype), e)
 
     def values_eq_approx(self, a, b, tolerance=1e-4):
-        return abs(a - b) <= ((abs(a) + abs(b)) * tolerance)
+        # The addition have risk of overflow especially with [u]int8
+        diff = a - b
+        if diff == 0:
+            return True
+        return abs(diff) <= (abs(a) * tolerance) + (abs(b) * tolerance)
 
     def c_headers(self, c_compiler):
         l = ['<math.h>']
@@ -1031,6 +1035,7 @@ class LT(LogicalComparison):
     identity = False
     commutative = False
     associative = False
+    nfunc_spec = ('less', 2, 1)
 
     def impl(self, x, y):
         # built-in < don't support complex
@@ -1049,6 +1054,7 @@ class GT(LogicalComparison):
     identity = False
     commutative = False
     associative = False
+    nfunc_spec = ('greater', 2, 1)
 
     def impl(self, x, y):
         # built-in > don't support complex
@@ -1067,6 +1073,7 @@ class LE(LogicalComparison):
     identity = False
     commutative = False
     associative = False
+    nfunc_spec = ('less_equal', 2, 1)
 
     def impl(self, x, y):
         # built-in <= don't support complex
@@ -1085,6 +1092,7 @@ class GE(LogicalComparison):
     identity = False
     commutative = False
     associative = False
+    nfunc_spec = ('greater_equal', 2, 1)
 
     def impl(self, x, y):
         # built-in >= don't support complex
@@ -1103,6 +1111,7 @@ class EQ(LogicalComparison):
     identity = False
     commutative = True
     associative = False
+    nfunc_spec = ('equal', 2, 1)
 
     def impl(self, x, y):
         return x == y
@@ -1118,6 +1127,7 @@ class NEQ(LogicalComparison):
     identity = False
     commutative = True
     associative = False
+    nfunc_spec = ('not_equal', 2, 1)
 
     def impl(self, x, y):
         return x != y
@@ -1132,6 +1142,8 @@ neq = NEQ()
 
 
 class IsNan(FixedLogicalComparison):
+    nfunc_spec = ('isnan', 1, 1)
+
     def impl(self, x):
         return numpy.isnan(x)
 
@@ -1145,6 +1157,8 @@ isnan = IsNan()
 
 
 class IsInf(FixedLogicalComparison):
+    nfunc_spec = ('isinf', 1, 1)
+
     def impl(self, x):
         return numpy.isinf(x)
 
@@ -1223,6 +1237,7 @@ inclosedrange = InRange(False, False)
 
 class Switch(ScalarOp):
     nin = 3
+    nfunc_spec = ('where', 3, 1)
 
     def impl(self, cond, ift, iff):
         if cond:
@@ -1296,6 +1311,7 @@ class OR(BinaryBitOp):
     identity = 0
     commutative = True
     associative = True
+    nfunc_spec = ('bitwise_or', 2, 1)
 
     def impl(self, x, y):
         return x | y
@@ -1311,6 +1327,7 @@ class XOR(BinaryBitOp):
     identity = 0
     commutative = True
     associative = True
+    nfunc_spec = ('bitwise_xor', 2, 1)
 
     def impl(self, x, y):
         return x ^ y
@@ -1326,6 +1343,7 @@ class AND(BinaryBitOp):
     identity = 1
     commutative = True
     associative = True
+    nfunc_spec = ('bitwise_and', 2, 1)
 
     def impl(self, x, y):
         return x & y
@@ -1338,6 +1356,8 @@ and_ = AND()
 
 
 class Invert(UnaryBitOp):
+    nfunc_spec = ('invert', 1, 1)
+
     def impl(self, x):
         return ~x
 
@@ -1354,6 +1374,7 @@ invert = Invert()
 class Maximum(BinaryScalarOp):
     commutative = True
     associative = True
+    nfunc_spec = ('maximum', 2, 1)
 
     def impl(self, *inputs):
         # The built-in max function don't support complex type
@@ -1392,6 +1413,7 @@ maximum = Maximum(upcast_out, name='maximum')
 class Minimum(BinaryScalarOp):
     commutative = True
     associative = True
+    nfunc_spec = ('minimum', 2, 1)
 
     def impl(self, *inputs):
         # The built-in min function don't support complex type
@@ -1427,6 +1449,7 @@ class Add(ScalarOp):
     identity = 0
     commutative = True
     associative = True
+    nfunc_spec = ('add', 2, 1)
 
     def impl(self, *inputs):
         return sum(inputs)
@@ -1465,6 +1488,7 @@ class Mul(ScalarOp):
     identity = 1
     commutative = True
     associative = True
+    nfunc_spec = ('multiply', 2, 1)
 
     def impl(self, *inputs):
         return numpy.product(inputs)
@@ -1516,6 +1540,8 @@ mul = Mul(upcast_out, name='mul')
 
 
 class Sub(BinaryScalarOp):
+    nfunc_spec = ('subtract', 2, 1)
+
     def impl(self, x, y):
         return x - y
 
@@ -1604,6 +1630,8 @@ def div_proxy(x, y):
 
 
 class TrueDiv(BinaryScalarOp):
+    nfunc_spec = ('true_divide', 2, 1)
+
     def output_types(self, types):
         if all(t in discrete_types for t in types):
             return [get_scalar_type(config.floatX)]
@@ -1659,6 +1687,7 @@ true_div = TrueDiv(upcast_out, name='true_div')
 
 
 class IntDiv(BinaryScalarOp):
+    nfunc_spec = ('floor_divide', 2, 1)
     complex_error = ComplexError(
         "Theano does not support integer division (//) on "
         "complex numbers, since numpy deprecated it.")
@@ -1744,6 +1773,7 @@ def mod_check(x, y):
 
 
 class Mod(BinaryScalarOp):
+    nfunc_spec = ('mod', 2, 1)
     complex_error = ComplexError(
         "Theano does not support the mod operator (%) on "
         "complex numbers, since numpy deprecated it.")
@@ -1828,6 +1858,8 @@ mod = Mod(upcast_out, name='mod')
 
 
 class Pow(BinaryScalarOp):
+    nfunc_spec = ('power', 2, 1)
+
     def impl(self, x, y):
         return x ** y
 
@@ -1903,6 +1935,8 @@ pow = Pow(upcast_out, name='pow')
 
 class Clip(ScalarOp):
     nin = 3
+    # The numpy.clip don't work correctly when the min is bigger then the max,
+    # So we do not use nfunc_spec = ('clip', 3, 1)
 
     def impl(self, x, min, max):
         if x < min:
@@ -2086,6 +2120,8 @@ def cast(x, dtype):
 
 
 class Abs(UnaryScalarOp):
+    nfunc_spec = ('abs', 1, 1)
+
     def make_node(self, x):
         inputs = [as_scalar(input) for input in [x]]
         if inputs[0].type == complex64:
@@ -2126,6 +2162,8 @@ abs_ = Abs(same_out)
 
 
 class Sgn(UnaryScalarOp):
+    nfunc_spec = ('sign', 1, 1)
+
     def impl(self, x):
         # casting to output type is handled by filter
         return numpy.sign(x)
@@ -2162,6 +2200,8 @@ sgn = Sgn(same_out_nocomplex, name='sgn')
 
 
 class Ceil(UnaryScalarOp):
+    nfunc_spec = ('ceil', 1, 1)
+
     def impl(self, x):
         return numpy.ceil(x)
 
@@ -2183,6 +2223,8 @@ ceil = Ceil(same_out_nocomplex, name='ceil')
 
 
 class Floor(UnaryScalarOp):
+    nfunc_spec = ('floor', 1, 1)
+
     def impl(self, x):
         return numpy.floor(x)
 
@@ -2204,6 +2246,8 @@ floor = Floor(same_out_nocomplex, name='floor')
 
 
 class Trunc(UnaryScalarOp):
+    nfunc_spec = ('trunc', 1, 1)
+
     def impl(self, x):
         return numpy.trunc(x)
 
@@ -2227,6 +2271,8 @@ class RoundHalfToEven(UnaryScalarOp):
     See http://en.wikipedia.org/wiki/Rounding for more details.
 
     """
+    nfunc_spec = ('around', 1, 1)
+
     def impl(self, x):
         return numpy.round(x)
 
@@ -2348,6 +2394,8 @@ round_half_away_from_zero = RoundHalfAwayFromZero(same_out_float_only)
 
 
 class Neg(UnaryScalarOp):
+    nfunc_spec = ('negative', 1, 1)
+
     def impl(self, x):
         return -x
 
@@ -2413,6 +2461,7 @@ class Log(UnaryScalarOp):
     log base e.
 
     """
+    nfunc_spec = ('log', 1, 1)
     amd_float32 = "amd_vrsa_logf"
     amd_float64 = "amd_vrda_log"
 
@@ -2454,6 +2503,7 @@ class Log2(UnaryScalarOp):
     log base 2.
 
     """
+    nfunc_spec = ('log2', 1, 1)
     amd_float32 = "amd_vrsa_log2f"
     amd_float64 = "amd_vrda_log2"
 
@@ -2492,6 +2542,7 @@ class Log10(UnaryScalarOp):
     log base 10.
 
     """
+    nfunc_spec = ('log10', 1, 1)
     amd_float32 = "amd_vrsa_log10f"
     amd_float64 = "amd_vrda_log10"
 
@@ -2530,6 +2581,8 @@ class Log1p(UnaryScalarOp):
     log(1+x).
 
     """
+    nfunc_spec = ('log1p', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.log1p will compute the result in
         # half-precision (float16), where we want float32.
@@ -2561,6 +2614,7 @@ log1p = Log1p(upgrade_to_float, name='log1p')
 
 
 class Exp(UnaryScalarOp):
+    nfunc_spec = ('exp', 1, 1)
     amd_float32 = "amd_vrsa_expf"
     amd_float64 = "amd_vrda_exp"
 
@@ -2595,6 +2649,8 @@ exp = Exp(upgrade_to_float, name='exp')
 
 
 class Exp2(UnaryScalarOp):
+    nfunc_spec = ('exp2', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.exp2 will compute the result in
         # half-precision (float16), where we want float32.
@@ -2626,6 +2682,8 @@ exp2 = Exp2(upgrade_to_float, name='exp2')
 
 
 class Expm1(UnaryScalarOp):
+    nfunc_spec = ('expm1', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.expm1 will compute the result in
         # half-precision (float16), where we want float32.
@@ -2660,6 +2718,8 @@ expm1 = Expm1(upgrade_to_float, name='expm1')
 
 
 class Sqr(UnaryScalarOp):
+    nfunc_spec = ('square', 1, 1)
+
     def impl(self, x):
         return x * x
 
@@ -2684,6 +2744,8 @@ sqr = Sqr(same_out, name='sqr')
 
 
 class Sqrt(UnaryScalarOp):
+    nfunc_spec = ('sqrt', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.sqrt will compute the result in
         # half-precision (float16), where we want float32.
@@ -2715,6 +2777,8 @@ sqrt = Sqrt(upgrade_to_float, name='sqrt')
 
 
 class Deg2Rad(UnaryScalarOp):
+    nfunc_spec = ('deg2rad', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.deg2rad will compute the result in
         # half-precision (float16), where we want float32.
@@ -2746,6 +2810,8 @@ deg2rad = Deg2Rad(upgrade_to_float, name='deg2rad')
 
 
 class Rad2Deg(UnaryScalarOp):
+    nfunc_spec = ('rad2deg', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.rad2deg will compute the result in
         # half-precision (float16), where we want float32.
@@ -2777,6 +2843,7 @@ rad2deg = Rad2Deg(upgrade_to_float, name='rad2deg')
 
 
 class Cos(UnaryScalarOp):
+    nfunc_spec = ('cos', 1, 1)
     amd_float32 = "amd_vrsa_cosf"
     amd_float64 = "amd_vrda_cos"
 
@@ -2811,6 +2878,8 @@ cos = Cos(upgrade_to_float, name='cos')
 
 
 class ArcCos(UnaryScalarOp):
+    nfunc_spec = ('arccos', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.arccos will compute the result in
         # half-precision (float16), where we want float32.
@@ -2842,6 +2911,7 @@ arccos = ArcCos(upgrade_to_float, name='arccos')
 
 
 class Sin(UnaryScalarOp):
+    nfunc_spec = ('sin', 1, 1)
     amd_float32 = "amd_vrsa_sinf"
     amd_float64 = "amd_vrda_sin"
 
@@ -2876,6 +2946,8 @@ sin = Sin(upgrade_to_float, name='sin')
 
 
 class ArcSin(UnaryScalarOp):
+    nfunc_spec = ('arcsin', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.arcsin will compute the result in
         # half-precision (float16), where we want float32.
@@ -2907,6 +2979,8 @@ arcsin = ArcSin(upgrade_to_float, name='arcsin')
 
 
 class Tan(UnaryScalarOp):
+    nfunc_spec = ('tan', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.tan will compute the result in
         # half-precision (float16), where we want float32.
@@ -2938,6 +3012,8 @@ tan = Tan(upgrade_to_float, name='tan')
 
 
 class ArcTan(UnaryScalarOp):
+    nfunc_spec = ('arctan', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.arctan will compute the result in
         # half-precision (float16), where we want float32.
@@ -2969,6 +3045,8 @@ arctan = ArcTan(upgrade_to_float, name='arctan')
 
 
 class ArcTan2(BinaryScalarOp):
+    nfunc_spec = ('arctan2', 1, 1)
+
     def impl(self, y, x):
         # If x and y are int8 or uint8, numpy.arctan2 will compute the result
         # in half-precision (float16), where we want float32.
@@ -3016,6 +3094,8 @@ class Cosh(UnaryScalarOp):
     cosh(x) = (exp(x) + exp(-x)) / 2.
 
     """
+    nfunc_spec = ('cosh', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.cosh will compute the result in
         # half-precision (float16), where we want float32.
@@ -3047,6 +3127,8 @@ cosh = Cosh(upgrade_to_float, name='cosh')
 
 
 class ArcCosh(UnaryScalarOp):
+    nfunc_spec = ('arccosh', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.arccosh will compute the result in
         # half-precision (float16), where we want float32.
@@ -3082,6 +3164,8 @@ class Sinh(UnaryScalarOp):
     sinh(x) = (exp(x) - exp(-x)) / 2.
 
     """
+    nfunc_spec = ('sinh', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.sinh will compute the result in
         # half-precision (float16), where we want float32.
@@ -3113,6 +3197,8 @@ sinh = Sinh(upgrade_to_float, name='sinh')
 
 
 class ArcSinh(UnaryScalarOp):
+    nfunc_spec = ('arcsinh', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.arcsinh will compute the result in
         # half-precision (float16), where we want float32.
@@ -3149,6 +3235,8 @@ class Tanh(UnaryScalarOp):
             = (exp(2*x) - 1) / (exp(2*x) + 1).
 
     """
+    nfunc_spec = ('tanh', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.tanh will compute the result in
         # half-precision (float16), where we want float32.
@@ -3180,6 +3268,8 @@ tanh = Tanh(upgrade_to_float, name='tanh')
 
 
 class ArcTanh(UnaryScalarOp):
+    nfunc_spec = ('arctanh', 1, 1)
+
     def impl(self, x):
         # If x is an int8 or uint8, numpy.arctanh will compute the result in
         # half-precision (float16), where we want float32.
@@ -3215,6 +3305,9 @@ class Real(UnaryScalarOp):
     Extract the real coordinate of a complex number.
 
     """
+    # numpy.real(float32) return a view on the inputs.
+    # nfunc_spec = ('real', 1, 1)
+
     def impl(self, x):
         return numpy.real(x)
 
@@ -3227,6 +3320,8 @@ real = Real(real_out, name='real')
 
 
 class Imag(UnaryScalarOp):
+    nfunc_spec = ('imag', 1, 1)
+
     def impl(self, x):
         return numpy.imag(x)
 
@@ -3244,6 +3339,8 @@ imag = Imag(real_out, name='imag')
 
 
 class Angle(UnaryScalarOp):
+    nfunc_spec = ('angle', 1, 1)
+
     def impl(self, x):
         return numpy.angle(x)
 
@@ -3303,6 +3400,8 @@ complex = Complex(name='complex')
 
 
 class Conj(UnaryScalarOp):
+    nfunc_spec = ('conj', 1, 1)
+
     def impl(self, x):
         return numpy.conj(x)
 conj = Conj(same_out, name='conj')

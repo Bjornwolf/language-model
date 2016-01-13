@@ -1,7 +1,7 @@
 from nose.plugins.skip import SkipTest
 
-from theano.d3viz import has_requirements
-if not has_requirements:
+from theano.d3viz.formatting import pydot_imported
+if not pydot_imported:
     raise SkipTest('Missing requirements')
 
 import numpy as np
@@ -32,7 +32,7 @@ class TestPyDotFormatter(unittest.TestCase):
         expected = 11
         if th.config.mode == "FAST_COMPILE":
             expected = 12
-        self.assertEqual(len(graph.get_nodes()), 12)
+        self.assertEqual(len(graph.get_nodes()), expected)
         nc = self.node_counts(graph)
 
         if th.config.mode == "FAST_COMPILE":

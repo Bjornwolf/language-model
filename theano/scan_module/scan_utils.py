@@ -121,7 +121,7 @@ class until(object):
     of code to fail).
 
     """
- 
+
     def __init__(self, condition):
         self.condition = tensor.as_tensor_variable(condition)
         assert self.condition.ndim == 0
@@ -131,7 +131,7 @@ def traverse(out, x, x_copy, d, visited=None):
     """
     Function used by scan to parse the tree and figure out which nodes
     it needs to replace.
-    
+
     There are two options :
         1) x and x_copy or on host, then you would replace x with x_copy
         2) x is on gpu, x_copy on host, then you need to replace
@@ -156,7 +156,7 @@ def traverse(out, x, x_copy, d, visited=None):
             d[out] = cuda.gpu_from_host(x_copy)
         else:
             assert isinstance(x.type, gpuarray.GpuArrayType)
-            d[out] = gpuarray.gpu_from_host(x_copy)
+            d[out] = gpuarray.GpuFromHost(x.type.context_name)(x_copy)
         return d
     elif out.owner is None:
         return d
@@ -201,7 +201,7 @@ def clone(output,
           copy_inputs=DEPRECATED_ARG):
     """
     Function that allows replacing subgraphs of a computational graph.
-    
+
     It returns a copy of the initial subgraph with the corresponding
     substitutions.
 
@@ -607,19 +607,18 @@ def isNaN_or_Inf_or_None(x):
     return isNone or isNaN or isInf or isStr
 
 
-def expand(tensor_var, size):
+def expand_empty(tensor_var, size):
     """
-    Transoforms the shape of a tensor from (d1, d2 ... ) to ( d1+size, d2, ..)
-    by adding 0s at the end of the tensor.
+    Transforms the shape of a tensor from (d1, d2 ... ) to ( d1+size, d2, ..)
+    by adding uninitialized memory at the end of the tensor.
 
     """
-    # Corner case that I might use in an optimization
+
     if size == 0:
         return tensor_var
     shapes = [tensor_var.shape[x] for x in xrange(tensor_var.ndim)]
-    zeros_shape = [size + shapes[0]] + shapes[1:]
-    empty = tensor.zeros(zeros_shape,
-                         dtype=tensor_var.dtype)
+    new_shape = [size + shapes[0]] + shapes[1:]
+    empty = tensor.AllocEmpty(tensor_var.dtype)(*new_shape)
 
     return tensor.set_subtensor(empty[:shapes[0]], tensor_var)
 
@@ -858,16 +857,19 @@ class Validator(object):
             return None
 
         if out.owner is None:
-            # This is an unknown input node, so it is invalid.
-            self.invalid.add(out)
             if isinstance(out, tensor.TensorConstant):
-                # We can clone it to get a valid constant
+                # This might be a constant from the outer graph or a constant
+                # from the inner graph. In all cases, we can clone it to be
+                # certain we have a valid constant
                 cloned_out = out.clone()
                 self.valid.add(cloned_out)
+                self.invalid.add(out)
                 self.valid_equivalent[out] = cloned_out
                 return cloned_out, False
-
-            return None
+            else:
+                # This is an input node and it has not been explicitly marked
+                # as invalid so we can use it
+                return out, True
 
         # Recurse over inputs
         inputs = [self.check(i) for i in out.owner.inputs]
@@ -1308,7 +1310,7 @@ def forced_replace(out, x, y):
     Check all internal values of the graph that compute the variable ``out``
     for occurrences of values identical with ``x``. If such occurrences are
     encountered then they are replaced with variable ``y``.
-    
+
     Parameters
     ----------
     out : Theano Variable

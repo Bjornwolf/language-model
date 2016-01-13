@@ -242,7 +242,7 @@ class Function(object):
 
     A Function instance may be serialized using the `pickle` or
     `cPickle` modules.  This will save all default inputs, the graph,
-    and *** to the pickle file (WRITEME).
+    and WRITEME to the pickle file.
 
     A Function instance have a ``trust_input`` field that default to
     False. When True, we don't do extra check of the input to give
@@ -560,29 +560,33 @@ class Function(object):
         Copy this function. Copied function will have separated maker and
         fgraph with original function. User can choose whether to separate
         storage by changing the share_memory arguments.
-        ---------------------
-        Params:
-            share_memory -- { boolean } Default is False. When True, two
-            function share intermediate storages(storages except input and
+
+        Parameters
+        ----------
+        share_memory : boolean
+            When True, two function share intermediate storages(storages except input and
             output storages). Otherwise two functions will only share partial
             storages and same maker. If two functions share memory and
             allow_gc=False, this will increase executing speed and save memory.
 
-            swap -- { dict } Dictionary that map old SharedVariables to new
+        swap : dict
+            Dictionary that map old SharedVariables to new
             SharedVariables. Default is None.
             NOTE: The shared variable swap in only done in the new returned
             function, not in the user graph.
 
-            delete_updates -- { boolean } Default is False. If True, Copied
-            function will not have update.
-
-            name -- { string } If provided, will be the name of the new
+        delete_updates : boolean
+            If True, Copied function will not have updates.
+        name : string
+            If provided, will be the name of the new
             Function. Otherwise, it will be old + " copy"
 
-            profile -- as theano.function profile parameter
-        ---------------------
-        Returns:
-            func -- Copied theano.Function
+        profile :
+            as theano.function profile parameter
+
+        Returns
+        -------
+        Copied theano.Function
         """
         # helper function
         def checkSV(sv_ori, sv_rpl):
@@ -1459,6 +1463,10 @@ class FunctionMaker(object):
                     if theano.config.profile_optimizer:
                         profile.optimizer_profile = (optimizer,
                                                      optimizer_profile)
+                elif theano.config.profile_optimizer:
+                    warnings.warn((
+                        "config.profile_optimizer requires config.profile to "
+                        " be set to True as well"), stacklevel=3)
                 _logger.debug('Optimizing took %f seconds', opt_time)
 
                 # Add deep copy to respect the memory interface

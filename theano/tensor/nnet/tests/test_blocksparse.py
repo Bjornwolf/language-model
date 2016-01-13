@@ -10,7 +10,7 @@ import theano
 from theano import tensor
 import theano.tests.unittest_tools as utt
 
-from theano.sandbox.blocksparse import sparse_block_dot, \
+from theano.tensor.nnet.blocksparse import sparse_block_dot, \
     sparse_block_gemv, sparse_block_outer
 
 
@@ -212,8 +212,9 @@ class BlockSparse_Gemv_and_Outer(unittest.TestCase):
         def op(b, h, W):
             return self.gemv_op(b.take(oIdx, axis=0), W, h, iIdx, oIdx)
 
-        utt.verify_grad(metaop, [b_val, h_val, W_val], mode=self.mode)
-        utt.verify_grad(op, [b_val, h_val, W_val], mode=self.mode)
+        eps = 3e-3
+        utt.verify_grad(metaop, [b_val, h_val, W_val], mode=self.mode, eps=eps)
+        utt.verify_grad(op, [b_val, h_val, W_val], mode=self.mode, eps=eps)
 
     def test_sparseblockgemv_grad_1(self):
         """
