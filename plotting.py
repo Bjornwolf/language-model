@@ -24,10 +24,10 @@ print dir(ml)
 ml.load_to(main_loop)
 print dir(main_loop.log)
 print main_loop.log.keys()
-print main_loop.log.keys()[0]
-t_xs = main_loop.log.keys()[1:]
-v_xs = filter(lambda x: 'valid_bits_per_character' in main_loop.log[x], t_xs)
-bpc = map(lambda x: main_loop.log[x]['bits_per_character'], t_xs)
-vbpc = map(lambda x: main_loop.log[x]['valid_bits_per_character'], v_xs)
-blob = ((t_xs, bpc), (v_xs, vbpc))
-pickle.dump(blob, open('/home/i246059/public_html/' + sys.argv[1][:-5], 'w'))
+#print main_loop.log.keys()[0]
+#t_xs = main_loop.log.keys()[1:]
+#v_xs = filter(lambda x: 'valid_bits_per_character' in main_loop.log[x], t_xs)
+#bpc = map(lambda x: main_loop.log[x]['bits_per_character'], t_xs)
+#vbpc = map(lambda x: main_loop.log[x]['valid_bits_per_character'], v_xs)
+#blob = ((t_xs, bpc), (v_xs, vbpc))
+#pickle.dump(blob, open('/home/i246059/public_html/' + sys.argv[1][:-5], 'w'))

@@ -28,13 +28,13 @@ def build_set(name, fnames, prefix_path, out_path):
     g.write(files)
     g.close()
             
-prefix_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_raw/plwiki/'
+prefix_path = ''
 
 
-train_fnames = pickle.load(open('/pio/scratch/1/i246059/language-model/data/plwiki_raw/train_set_names', 'rb'))
-out_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1gm/train/data'
+train_fnames = ['/pio/scratch/1/i246059/language-model/data/bl_train']
+out_path = '/pio/scratch/1/i246059/language-model/data/blag/train/data'
 build_set("TRAIN", train_fnames, prefix_path, out_path)
 
-test_fnames = pickle.load(open('/pio/scratch/1/i246059/language-model/data/plwiki_raw/test_set_names', 'rb'))
-out_path = '/pio/lscratch/1/i246059/language-model/data/plwiki_1gm/test/data'
+test_fnames = ['/pio/scratch/1/i246059/language-model/data/bl_test']
+out_path = '/pio/scratch/1/i246059/language-model/data/blag/test/data'
 build_set("TEST", test_fnames, prefix_path, out_path)

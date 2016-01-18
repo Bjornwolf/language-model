@@ -12,7 +12,7 @@ class BigFileIterator:
         self.files = []
         for fname in file_list:
             handle = codecs.open(fname)
-            content = handle.read()
+            content = handle.read().decode('utf-8')
             self.files += content.split('<*>LI<*>')
             handle.close()
         self.max_i = len(self.files)
