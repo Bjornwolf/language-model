@@ -39,3 +39,4 @@ print charset
 for i in xrange(outputs.shape[1]):
     print "Sample number ", i, ": ",
     print ''.join(map(lambda x: charset[x], outputs[:,i]))
+

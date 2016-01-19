@@ -81,7 +81,7 @@ def build_algorithm(generator, cost, config):
         rule = build_rule(rule_type, rule_params)
     else:
         rules = []
-        for i in range(rules_no - 1):
+        for i in range(rules_no):
             rule_type = config['step_rule_' + str(i)]
             rule_params = config['step_rule_' + str(i) + '_params']
             rules.append(build_rule(rule_type, rule_params))

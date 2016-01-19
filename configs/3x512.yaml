@@ -8,19 +8,22 @@ lstm_dim_2: 512
 lstm_init_width: 0.16
 
 step_rules_no: 2
-step_rule_0: RMSProp
-step_rule_0_params:
+step_rule_0: StepClipping 
+step_rule_0_params: 
+    threshold: 1.75
+step_rule_1: RMSProp
+step_rule_1_params:
     learning_rate: 0.002
     decay_rate: 0.95
     max_scaling: 100000
-step_rule_1: StepClipping 
-step_rule_1_params: 
-    threshold: 5
 
 
 minibatches: 30
 batch_length: 300
 batch_overlap: 100
+
+lr_decay: 0.97
+lr_decay_frequency: 1000
 
 average_frequency: 1000
 checkpoint_frequency: 1000
