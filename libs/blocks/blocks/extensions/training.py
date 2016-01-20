@@ -28,12 +28,12 @@ class SharedVariableModifier(SimpleExtension):
         (with the same dtype as `parameter`).
 
     """
-    def __init__(self, parameter, function, **kwargs):
+    def __init__(self, parameter, function, num_args, **kwargs):
         kwargs.setdefault("after_batch", True)
         super(SharedVariableModifier, self).__init__(**kwargs)
         self.parameter = parameter
         self.function = function
-        self.num_args = len(inspect.getargspec(function).args)
+        self.num_args = num_args
 
     def do(self, which_callback, *args):
         iterations_done = self.main_loop.log.status['iterations_done']
