@@ -369,9 +369,10 @@ class LSTM(BaseRecurrent, Initializable):
 
     """
     @lazy(allocation=['dim'])
-    def __init__(self, dim, activation=None, **kwargs):
+    def __init__(self, dim, activation=None, forget_init=None, **kwargs):
         super(LSTM, self).__init__(**kwargs)
         self.dim = dim
+        self.forget_init = forget_init
 
         if not activation:
             activation = Tanh()
@@ -413,8 +414,12 @@ class LSTM(BaseRecurrent, Initializable):
             self.W_cell_to_out, self.initial_state_, self.initial_cells]
 
     def _initialize(self):
-        for weights in self.parameters[:4]:
-            self.weights_init.initialize(weights, self.rng)
+        for (i, weights) in enumerate(self.parameters[:4]):
+            # check if weights = cell -> forget and if we have a special rule
+            if i == 2 and self.forget_init is not None:
+                self.forget_init.initialize(weights, self.rng)
+            else:
+                self.weights_init.initialize(weights, self.rng)
 
     @recurrent(sequences=['inputs', 'mask'], states=['states', 'cells'],
                contexts=[], outputs=['states', 'cells'])

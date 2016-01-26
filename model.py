@@ -17,8 +17,9 @@ def build_model(alphabet_size, config):
     uniform_width = config['lstm_init_width']
     stack = []
     for dim in dimensions:
-        stack.append(LSTM(dim=dim, use_bias=False, 
-                          weights_init = Uniform(width=uniform_width)))
+        stack.append(LSTM(dim=dim, use_bias=True, 
+                          weights_init = Uniform(width=uniform_width),
+                          forget_init=Constant(1.)))
     recurrent_stack = RecurrentStack(stack, name='transition')
 
     readout = Readout(readout_dim=alphabet_size,

@@ -31,7 +31,8 @@ t_xs = main_loop.log.keys()[1:]
 v_xs = filter(lambda x: 'valid_bits_per_character' in main_loop.log[x], t_xs)
 bpc = map(lambda x: main_loop.log[x]['bits_per_character'], t_xs)
 gn = map(lambda x: main_loop.log[x]['total_gradient_norm'], t_xs)
+lr = map(lambda x: main_loop.log[x]['learning_rate'], t_xs)
 #print [np.percentile(gn, i) for i in range(101)]
 vbpc = map(lambda x: main_loop.log[x]['valid_bits_per_character'], v_xs)
-blob = ((t_xs, bpc), (v_xs, vbpc))
+blob = ((t_xs, bpc), (v_xs, vbpc), (t_xs, gn), (t_xs, lr), 1.75)
 pickle.dump(blob, open('/home/i246059/public_html/' + sys.argv[1][:-5], 'w'))

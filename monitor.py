@@ -11,7 +11,7 @@ class VarModifier:
         self.c = np.float32(c)
 
     def __call__(self, x, y):
-        return self.c * y
+        return np.float32(self.c * y)
 
 def build_extensions(cost, algorithm, valid, config):
     cost_cg = ComputationGraph(cost)

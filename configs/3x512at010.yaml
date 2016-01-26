@@ -2,9 +2,9 @@ working_mode: train_new
 unknown_char: <UNK>
 
 lstm_layers: 3
-lstm_dim_0: 64
-lstm_dim_1: 64
-lstm_dim_2: 64
+lstm_dim_0: 512
+lstm_dim_1: 512
+lstm_dim_2: 512
 lstm_init_width: 0.16
 
 step_rules_no: 2
@@ -13,16 +13,17 @@ step_rule_0_params:
     threshold: 1.75
 step_rule_1: RMSProp
 step_rule_1_params:
-    learning_rate: 0.002
+    learning_rate: 0.01
     decay_rate: 0.95
     max_scaling: 100000
 
-lr_decay: 0.97
-lr_decay_frequency: 500
 
-minibatches: 80
+minibatches: 30
 batch_length: 300
 batch_overlap: 100
+
+lr_decay: 0.9
+lr_decay_frequency: 500
 
 average_frequency: 1000
 checkpoint_frequency: 1000
@@ -30,7 +31,6 @@ printing_frequency: 250
 valid_frequency: 500
 
 dict_path: /pio/scratch/1/i246059/language-model/alphabet.p
-train_path: /pio/scratch/1/i246059/language-model/data/wp/train/
-valid_path: /pio/scratch/1/i246059/language-model/data/wp/test/
-checkpoint_path: /pio/scratch/1/i246059/language-model/models/wp3x64.thn
-
+train_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gm/train/
+valid_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gm/test/
+checkpoint_path: /pio/scratch/1/i246059/language-model/models/3x512.thn
