@@ -6,6 +6,7 @@ from blocks.extensions.monitoring import (TrainingDataMonitoring,
         DataStreamMonitoring)
 from blocks.extensions.training import SharedVariableModifier
 
+
 class VarModifier:
     def __init__(self, c):
         self.c = np.float32(c)
@@ -45,9 +46,9 @@ def build_extensions(cost, algorithm, valid, config):
                                  every_n_batches=checkpoint_frequency, 
                                  use_cpickle=True))
     extensions.append(Printing(every_n_batches=printing_frequency))
-    inst = VarModifier(config['lr_decay'])
-    extensions.append(SharedVariableModifier(algorithm.step_rule.components[i].learning_rate,
-    #                                          lambda x, y: np.float32(config['lr_decay']) * y, 2, every_n_batches=config['lr_decay_frequency'], after_batch=False))
-                                              inst, 2, every_n_batches=config['lr_decay_frequency'], after_batch=False))
+    if 'lr_decay' in config:
+        inst = VarModifier(config['lr_decay'])
+        extensions.append(SharedVariableModifier(algorithm.step_rule.components[i].learning_rate,
+                                                  inst, 2, every_n_batches=config['lr_decay_frequency'], after_batch=False))
 
     return extensions

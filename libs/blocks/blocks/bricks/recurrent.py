@@ -415,11 +415,14 @@ class LSTM(BaseRecurrent, Initializable):
 
     def _initialize(self):
         for (i, weights) in enumerate(self.parameters[:4]):
+            self.weights_init.initialize(weights, self.rng)
+            """
             # check if weights = cell -> forget and if we have a special rule
             if i == 2 and self.forget_init is not None:
                 self.forget_init.initialize(weights, self.rng)
             else:
                 self.weights_init.initialize(weights, self.rng)
+            """
 
     @recurrent(sequences=['inputs', 'mask'], states=['states', 'cells'],
                contexts=[], outputs=['states', 'cells'])
@@ -465,7 +468,7 @@ class LSTM(BaseRecurrent, Initializable):
         activation = tensor.dot(states, self.W_state) + inputs
         in_gate = tensor.nnet.sigmoid(slice_last(activation, 0) +
                                       cells * self.W_cell_to_in)
-        forget_gate = tensor.nnet.sigmoid(slice_last(activation, 1) +
+        forget_gate = tensor.nnet.sigmoid(slice_last(activation, 1) + 1. +
                                           cells * self.W_cell_to_forget)
         next_cells = (forget_gate * cells +
                       in_gate * nonlinearity(slice_last(activation, 2)))
