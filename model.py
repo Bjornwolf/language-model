@@ -42,11 +42,16 @@ def build_model(alphabet_size, config):
     mask = tensor.fmatrix('features_mask')
     cost_matrix = generator.cost_matrix(x, mask=mask)
 
-    length = config['batch_length'] - config['batch_overlap']
-
     log2e = math.log(math.e, 2)
-    cost = log2e * aggregation.mean(cost_matrix[:,-length:].sum(), 
-                                    mask[:-length:].sum())
+    if 'batch_length' in config:
+        length = config['batch_length'] - config['batch_overlap']
+
+        cost = log2e * aggregation.mean(cost_matrix[:,-length:].sum(), 
+                                    mask[:,-length:].sum())
+    else:
+        cost = log2e * aggregation.mean(cost_matrix[:,:].sum(), 
+                                    mask[:,:].sum())
+        
     cost.name = 'bits_per_character'
 
     return generator, cost

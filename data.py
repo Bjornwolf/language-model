@@ -1,6 +1,6 @@
 import os
 import cPickle as pickle
-from fuel.datasets import TextFile
+from fuel.datasets import TokenTextFile
 from fuel.streams import DataStream
 from fuel.transformers import Batch, Padding, Mapping
 from fuel.schemes import ConstantScheme
@@ -23,9 +23,8 @@ def switch_first_two_axes(stream):
     return tuple(result)
 
 def build_stream(files, alphabet, config):
-    fuel_text = TextFile(files=files, dictionary=alphabet, 
-                         bos_token=None, eos_token=None, 
-                         unk_token=config['unknown_char'], level='character')
+    fuel_text = TokenTextFile(files=files, dictionary=alphabet, 
+                              unk_token=config['unknown_char'])
     stream = DataStream(fuel_text)
     if 'minibatches' in config:
         minibatches = config['minibatches']

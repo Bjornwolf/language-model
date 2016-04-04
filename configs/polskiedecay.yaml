@@ -19,7 +19,7 @@ step_rule_1_params:
 
 
 minibatches: 300
-batch_length: adada
+batch_length: 300
 batch_overlap: 100
 
 lr_decay: 0.97
@@ -31,6 +31,6 @@ printing_frequency: 250
 valid_frequency: 500
 
 dict_path: /pio/scratch/1/i246059/language-model/alphabet.p
-train_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gm/train/
-valid_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gm/test/
-checkpoint_path: /pio/scratch/1/i246059/language-model/models/3x512.thn
+train_path: /pio/scratch/1/i246059/data/pl/train/
+valid_path: /pio/scratch/1/i246059/data/pl/test/
+checkpoint_path: /pio/scratch/1/i246059/language-model/models/polskie2.thn

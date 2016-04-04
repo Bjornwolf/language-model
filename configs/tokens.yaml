@@ -1,5 +1,5 @@
 working_mode: train_new
-unknown_char: <UNK>
+unknown_char: <<UNK>>
 
 lstm_layers: 3
 lstm_dim_0: 512
@@ -17,10 +17,7 @@ step_rule_1_params:
     decay_rate: 0.95
     max_scaling: 100000
 
-
-minibatches: 300
-batch_length: adada
-batch_overlap: 100
+minibatches: 30
 
 lr_decay: 0.97
 lr_decay_frequency: 500
@@ -30,7 +27,7 @@ checkpoint_frequency: 1000
 printing_frequency: 250
 valid_frequency: 500
 
-dict_path: /pio/scratch/1/i246059/language-model/alphabet.p
-train_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gm/train/
-valid_path: /pio/lscratch/1/i246059/language-model/data/plwiki_1gm/test/
-checkpoint_path: /pio/scratch/1/i246059/language-model/models/3x512.thn
+dict_path: /pio/scratch/1/i246059/language-model/tokens.p
+train_path: /pio/scratch/1/i246059/data/phon/ttrain/
+valid_path: /pio/scratch/1/i246059/data/phon/ttest/
+checkpoint_path: /pio/scratch/1/i246059/language-model/models/phon3x512.thn

@@ -25,40 +25,89 @@ class BigFileIterator:
         self.i += 1
         return self.files[self.i-1]
 
-class EagerFileIterator:
+class LineByLineIterator:
     def __init__(self, file_list):
         self.i = 0
-        self.max_i = len(file_list)
-        self.files = []
-        for fname in file_list:
-            handle = codecs.open(fname)
-            self.files.append(handle.read())
-            handle.close()
-    def __iter__(self):
-        return self
-
-    def next(self):
-        if self.i == self.max_i:
-            raise StopIteration
-        self.i += 1
-        return self.files[self.i-1]
-            
-
-class LazyFileIterator:
-    def __init__(self, file_list):
         self.file_list = file_list
+        self.handle = codecs.open(self.file_list[self.i])
+        self.memory = []
 
     def __iter__(self):
         return self
 
+    def remember(self, fragment):
+        self.memory = fragment
+    
+    def forget(self):
+        memo = self.memory
+        self.memory = []
+        return memo
+
     def next(self):
-        if self.file_list == []:
-            raise StopIteration
-        file_handle = codecs.open(self.file_list[0])
-        self.file_list = self.file_list[1:]
-        return file_handle
+        sentence = self.handle.readline().decode('utf-8')
+        if len(sentence) > 0:
+            return sentence
+        else:
+            if self.i == len(self.file_list):
+                raise StopIteration
+            self.i += 1
+            self.handle = codecs.open(self.file_list[self.i])
+            return self.handle.readline().decode('utf-8')
+
+class TokenTextFile(Dataset):
+    r"""
+    Parameters
+    ----------
+    files : list of str
+        1 sentence = 1 line
+    dictionary : dict
+    unk_token : str, optional
+        Token to use when no appropriate token can be found in dictionary.
+    """
+    provides_sources = ('features',)
+    example_iteration_scheme = None
+
+    def __init__(self, files, dictionary, unk_token='<UNK>', 
+                 batch_length=None, overlap=None):
+        self.files = files
+        self.dictionary = dictionary
+        if unk_token not in dictionary:
+            raise ValueError
+        self.unk_token = unk_token
+        self.batch_length = batch_length
+        self.overlap = overlap
+        if overlap is None:
+            self.overlap = 0
+        super(TokenTextFile, self).__init__()
 
 
+    def open(self):
+        return LineByLineIterator(self.files)
+
+    def parse_sentence(self, sentence):
+        data = []
+        sentence_stack = ''
+        for char in sentence.strip():
+            sentence_stack += char
+            if sentence_stack in self.dictionary:
+                data.append(self.dictionary[sentence_stack])
+                sentence_stack = ''
+        return data
+
+    def get_data(self, state=None, request=None):
+        if request is not None:
+            raise ValueError
+        if self.batch_length is None:
+            sentence = state.next()
+            return (self.parse_sentence(sentence),)
+        else:
+            data = state.forget()
+            while len(data) < self.batch_length:
+                sentence = state.next()
+                data += self.parse_sentence(sentence)
+            state.remember(data[:self.batch_length - self.overlap])
+            return (data[:self.batch_length],)
+        
 class TextFile(Dataset):
     r"""Reads text files and numberizes them given a dictionary.
 
@@ -93,29 +142,6 @@ class TextFile(Dataset):
         A function which takes a sentence (string) as an input and returns
         a modified string. For example ``str.lower`` in order to lowercase
         the sentence before numberizing.
-
-    Examples
-    --------
-    >>> with open('sentences.txt', 'w') as f:
-    ...     _ = f.write("This is a sentence\n")
-    ...     _ = f.write("This another one")
-    >>> dictionary = {'<UNK>': 0, '</S>': 1, 'this': 2, 'a': 3, 'one': 4}
-    >>> def lower(s):
-    ...     return s.lower()
-    >>> text_data = TextFile(files=['sentences.txt'],
-    ...                      dictionary=dictionary, bos_token=None,
-    ...                      preprocess=lower)
-    >>> from fuel.streams import DataStream
-    >>> for data in DataStream(text_data).get_epoch_iterator():
-    ...     print(data)
-    ([2, 0, 3, 0, 1],)
-    ([2, 0, 4, 1],)
-
-    .. doctest::
-       :hide:
-
-       >>> import os
-       >>> os.remove('sentences.txt')
 
     """
     provides_sources = ('features',)
