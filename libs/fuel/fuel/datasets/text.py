@@ -2,6 +2,7 @@ from picklable_itertools import iter_, chain
 
 from fuel.datasets import Dataset
 
+import numpy
 import pickle
 
 import codecs
@@ -45,12 +46,14 @@ class LineByLineIterator:
 
     def next(self):
         sentence = self.handle.readline().decode('utf-8')
+        while sentence =='\n':
+            sentence = self.handle.readline().decode('utf-8') 
         if len(sentence) > 0:
             return sentence
         else:
-            if self.i == len(self.file_list):
-                raise StopIteration
             self.i += 1
+            if self.i >= len(self.file_list):
+                raise StopIteration
             self.handle = codecs.open(self.file_list[self.i])
             return self.handle.readline().decode('utf-8')
 
@@ -99,14 +102,19 @@ class TokenTextFile(Dataset):
             raise ValueError
         if self.batch_length is None:
             sentence = state.next()
-            return (self.parse_sentence(sentence),)
+            return (numpy.array(self.parse_sentence(sentence), dtype=numpy.int64),)
         else:
+            initial_i = state.i
             data = state.forget()
             while len(data) < self.batch_length:
                 sentence = state.next()
-                data += self.parse_sentence(sentence)
+                if initial_i == state.i:
+                    data += self.parse_sentence(sentence)
+                else:
+                    state.remember(self.parse_sentence(sentence))
+                    return (numpy.array([data], dtype=numpy.int64),)
             state.remember(data[:self.batch_length - self.overlap])
-            return (data[:self.batch_length],)
+            return (numpy.array(data[:self.batch_length], dtype=numpy.int64),)
         
 class TextFile(Dataset):
     r"""Reads text files and numberizes them given a dictionary.

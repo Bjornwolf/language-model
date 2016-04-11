@@ -18,6 +18,8 @@ step_rule_1_params:
     max_scaling: 100000
 
 minibatches: 30
+batch_length: 200
+batch_overlap: 100
 
 lr_decay: 0.97
 lr_decay_frequency: 500
