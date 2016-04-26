@@ -11,6 +11,8 @@ from blocks.algorithms import DifferentiableCostMinimizer
 from blocks.extensions import CallbackName
 from blocks.model import Model
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 error_message = """
@@ -251,6 +253,285 @@ class MainLoop(object):
         self._run_extensions('before_batch', batch)
         with Timer('train', self.profile):
             self.algorithm.process_batch(batch)
+        self.status['iterations_done'] += 1
+        self._run_extensions('after_batch', batch)
+        self._check_finish_training('batch')
+        return True
+
+    def _run_extensions(self, method_name, *args):
+        with Timer(method_name, self.profile):
+            for extension in self.extensions:
+                with Timer(type(extension).__name__, self.profile):
+                    extension.dispatch(CallbackName(method_name), *args)
+
+    def _check_finish_training(self, level):
+        """Checks whether the current training should be terminated.
+
+        Parameters
+        ----------
+        level : {'epoch', 'batch'}
+            The level at which this check was performed. In some cases, we
+            only want to quit after completing the remained of the epoch.
+
+        """
+        # In case when keyboard interrupt is handled right at the end of
+        # the iteration the corresponding log record can be found only in
+        # the previous row.
+        if (self.log.current_row.get('training_finish_requested', False) or
+                self.status.get('batch_interrupt_received', False)):
+            raise TrainingFinish
+        if (level == 'epoch' and
+                self.status.get('epoch_interrupt_received', False)):
+            raise TrainingFinish
+
+    def _handle_epoch_interrupt(self, signal_number, frame):
+        # Try to complete the current epoch if user presses CTRL + C
+        logger.warning('Received epoch interrupt signal.' +
+                       epoch_interrupt_message)
+        signal.signal(signal.SIGINT, self._handle_batch_interrupt)
+        self.log.current_row['epoch_interrupt_received'] = True
+        # Add a record to the status. Unlike the log record it will be
+        # easy to access at later iterations.
+        self.status['epoch_interrupt_received'] = True
+
+    def _handle_batch_interrupt(self, signal_number, frame):
+        # After 2nd CTRL + C or SIGTERM signal (from cluster) finish batch
+        self._restore_signal_handlers()
+        logger.warning('Received batch interrupt signal.' +
+                       batch_interrupt_message)
+        self.log.current_row['batch_interrupt_received'] = True
+        # Add a record to the status. Unlike the log record it will be
+        # easy to access at later iterations.
+        self.status['batch_interrupt_received'] = True
+
+    def _restore_signal_handlers(self):
+        signal.signal(signal.SIGINT, self.original_sigint_handler)
+        signal.signal(signal.SIGTERM, self.original_sigterm_handler)
+
+
+class GANMainLoop(object):
+    """The standard main loop for GAN.
+
+    Parameters
+    ----------
+    algorithm_g : instance of :class:`~blocks.algorithms.TrainingAlgorithm`
+        The training algorithm for the generator.
+    algorithm_d : instance of :class:`~blocks.algorithms.TrainingAlgorithm`
+        The training algorithm for the discriminator.
+    data_stream : instance of :class:`.DataStream`.
+        The data stream. Should support :class:`AbstractDataStream`
+        interface from Fuel.
+    generator : instance of :class:`.ComputationGraph`
+    discriminator : instance of :class:`.ComputationGraph`
+    log : instance of :class:`.TrainingLog`, optional
+        The log. When not given, a :class:`.TrainingLog` is created.
+    log_backend : str
+        The backend to use for the log. Currently `python` and `sqlite` are
+        available. If not given, `config.log_backend` will be used. Ignored
+        if `log` is passed.
+    extensions : list of :class:`.TrainingExtension` instances
+        The training extensions. Will be called in the same order as given
+        here.
+
+    """
+    def __init__(self, algorithm_g, algorithm_d, data_stream, generator=None, 
+                 discriminator=None, noise_per_sample=10, k=1, minibatches=1, 
+                 log=None, log_backend=None, extensions=None):
+        if log is None:
+            if log_backend is None:
+                log_backend = config.log_backend
+            log = BACKENDS[log_backend]()
+        if extensions is None:
+            extensions = []
+
+        self.data_stream = data_stream
+        self.algorithm = algorithm_g
+        self.algorithm_g = algorithm_g
+        self.algorithm_d = algorithm_d
+        self.log = log
+        self.extensions = extensions
+        self.k = k
+        self.minibatches = minibatches
+        self.noise_per_sample = noise_per_sample
+
+        self.profile = Profile()
+
+        self._generator = generator
+
+        self._discriminator = discriminator
+
+        self.status['training_started'] = False
+        self.status['epoch_started'] = False
+        self.status['epoch_interrupt_received'] = False
+        self.status['batch_interrupt_received'] = False
+
+    @property
+    def generator(self):
+        if not self._generator:
+            raise AttributeError("no generator in this main loop" +
+                                 no_model_message)
+        return self._generator
+
+    @property
+    def discriminator(self):
+        if not self._discriminator:
+            raise AttributeError("no discriminator in this main loop" +
+                                 no_model_message)
+        return self._discriminator
+
+    @property
+    def iteration_state(self):
+        """Quick access to the (data stream, epoch iterator) pair."""
+        return (self.data_stream, self.epoch_iterator)
+
+    @iteration_state.setter
+    def iteration_state(self, value):
+        (self.data_stream, self.epoch_iterator) = value
+
+    @property
+    def status(self):
+        """A shortcut for `self.log.status`."""
+        return self.log.status
+
+    def run(self):
+        """Starts the main loop.
+
+        The main loop ends when a training extension makes
+        a `training_finish_requested` record in the log.
+
+        """
+        # This should do nothing if the user has already configured
+        # logging, and will it least enable error messages otherwise.
+        logging.basicConfig()
+
+        # If this is resumption from a checkpoint, it is crucial to
+        # reset `profile.current`. Otherwise, it simply does not hurt.
+        self.profile.current = []
+
+        # Sanity check for the most common case
+        if (self._generator and isinstance(self._generator, Model) and
+                isinstance(self.algorithm_g, DifferentiableCostMinimizer)):
+            if not (set(self._generator.get_parameter_dict().values()) ==
+                    set(self.algorithm_g.parameters)):
+                logger.warning("different parameters for model and algorithm")
+        if (self._discriminator and isinstance(self._discriminator, Model) and
+                isinstance(self.algorithm_d, DifferentiableCostMinimizer)):
+            if not (set(self._discriminator.get_parameter_dict().values()) ==
+                    set(self.algorithm_d.parameters)):
+                logger.warning("different parameters for model and algorithm")
+
+        with change_recursion_limit(config.recursion_limit):
+            self.original_sigint_handler = signal.signal(
+                signal.SIGINT, self._handle_epoch_interrupt)
+            self.original_sigterm_handler = signal.signal(
+                signal.SIGTERM, self._handle_batch_interrupt)
+            try:
+                logger.info("Entered the main loop")
+                if not self.status['training_started']:
+                    for extension in self.extensions:
+                        extension.main_loop = self
+                    self._run_extensions('before_training')
+                    with Timer('initialization', self.profile):
+                        self.algorithm_d.initialize()
+                        self.algorithm_g.initialize()
+                    self.status['training_started'] = True
+                # We can not write "else:" here because extensions
+                # called "before_training" could have changed the status
+                # of the main loop.
+                if self.log.status['iterations_done'] > 0:
+                    self.log.resume()
+                    self._run_extensions('on_resumption')
+                    self.status['epoch_interrupt_received'] = False
+                    self.status['batch_interrupt_received'] = False
+                with Timer('training', self.profile):
+                    while self._run_epoch():
+                        pass
+            except TrainingFinish:
+                self.log.current_row['training_finished'] = True
+            except Exception as e:
+                self._restore_signal_handlers()
+                self.log.current_row['got_exception'] = traceback.format_exc()
+                logger.error("Error occured during training." + error_message)
+                try:
+                    self._run_extensions('on_error')
+                except Exception:
+                    logger.error(traceback.format_exc())
+                    logger.error("Error occured when running extensions." +
+                                 error_in_error_handling_message)
+                reraise_as(e)
+            finally:
+                self._restore_signal_handlers()
+                if self.log.current_row.get('training_finished', False):
+                    self._run_extensions('after_training')
+                if config.profile:
+                    self.profile.report()
+
+    def find_extension(self, name):
+        """Find an extension with a given name.
+
+        Parameters
+        ----------
+        name : str
+            The name of the extension looked for.
+
+        Notes
+        -----
+        Will crash if there no or several extension found.
+
+        """
+        return unpack([extension for extension in self.extensions
+                       if extension.name == name], singleton=True)
+
+    def _run_epoch(self):
+        if not self.status.get('epoch_started', False):
+            try:
+                self.log.status['received_first_batch'] = False
+                self.epoch_iterator = (self.data_stream.
+                                       get_epoch_iterator(as_dict=True))
+            except StopIteration:
+                return False
+            self.status['epoch_started'] = True
+            self._run_extensions('before_epoch')
+        with Timer('epoch', self.profile):
+            while self._run_iteration():
+                pass
+        self.status['epoch_started'] = False
+        self.status['epochs_done'] += 1
+        # Log might not allow mutating objects, so use += instead of append
+        self.status['_epoch_ends'] += [self.status['iterations_done']]
+        self._run_extensions('after_epoch')
+        self._check_finish_training('epoch')
+        return True
+
+    def _run_iteration(self):
+        ministeps_made = 0
+        while ministeps_made < self.k:
+            try:
+                with Timer('read_data', self.profile):
+                    batch = next(self.epoch_iterator)
+            except StopIteration:
+                if not self.log.status['received_first_batch']:
+                    reraise_as(ValueError("epoch iterator yielded zero batches"))
+                return False
+            self.log.status['received_first_batch'] = True
+            self._run_extensions('before_batch', batch)
+            batch = batch['features']
+            noise = np.random.rand(self.noise_per_sample, self.minibatches).astype(np.float32)
+            generated_batch = self._generator(noise)[0]
+            bound_batch = np.zeros((batch.shape[0] * 2, batch.shape[1]), dtype=np.float32)
+            bound_batch[:self.minibatches, :] = generated_batch
+            bound_batch[self.minibatches:, :] = batch
+            bound_batch = {'features': bound_batch}
+            with Timer('train', self.profile):
+                self.algorithm_d.process_batch(bound_batch)
+            ministeps_made += 1
+
+        noise = np.random.rand(self.noise_per_sample, self.minibatches).astype(np.float32)
+        generated_batch = self._generator(noise)[0]
+        generated_batch = {'noise': noise}
+        with Timer('train', self.profile):
+            self.algorithm_g.process_batch(generated_batch)
+
         self.status['iterations_done'] += 1
         self._run_extensions('after_batch', batch)
         self._check_finish_training('batch')

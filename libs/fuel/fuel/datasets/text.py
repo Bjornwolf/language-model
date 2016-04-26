@@ -45,9 +45,9 @@ class LineByLineIterator:
         return memo
 
     def next(self):
-        sentence = self.handle.readline().decode('utf-8')
-        while sentence =='\n':
-            sentence = self.handle.readline().decode('utf-8') 
+        sentence = self.handle.readline().decode('utf-8', 'ignore')
+        while sentence == '\n':
+            sentence = self.handle.readline().decode('utf-8', 'ignore') 
         if len(sentence) > 0:
             return sentence
         else:
@@ -55,7 +55,7 @@ class LineByLineIterator:
             if self.i >= len(self.file_list):
                 raise StopIteration
             self.handle = codecs.open(self.file_list[self.i])
-            return self.handle.readline().decode('utf-8')
+            return self.handle.readline().decode('utf-8', 'ignore')
 
 class TokenTextFile(Dataset):
     r"""
