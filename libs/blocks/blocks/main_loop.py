@@ -334,9 +334,10 @@ class GANMainLoop(object):
         here.
 
     """
-    def __init__(self, algorithm_g, algorithm_d, data_stream, generator=None, 
-                 discriminator=None, noise_per_sample=10, k=1, minibatches=1, 
-                 log=None, log_backend=None, extensions=None):
+    def __init__(self, algorithm_g, g_out, algorithm_d, d_out, data_stream, 
+                 false_generated, false_dataset,
+                 generator=None, discriminator=None, noise_per_sample=10, k=1,
+                 minibatches=1, log=None, log_backend=None, extensions=None):
         if log is None:
             if log_backend is None:
                 log_backend = config.log_backend
@@ -350,9 +351,13 @@ class GANMainLoop(object):
         self.algorithm_d = algorithm_d
         self.log = log
         self.extensions = extensions
+        self.g_out = g_out
+        self.d_out = d_out
         self.k = k
         self.minibatches = minibatches
         self.noise_per_sample = noise_per_sample
+        self.false_generated = false_generated
+        self.false_dataset = false_dataset
 
         self.profile = Profile()
 
@@ -505,6 +510,8 @@ class GANMainLoop(object):
 
     def _run_iteration(self):
         ministeps_made = 0
+        self.false_generated = 0.
+        self.false_dataset = 0.
         while ministeps_made < self.k:
             try:
                 with Timer('read_data', self.profile):
@@ -525,6 +532,10 @@ class GANMainLoop(object):
             with Timer('train', self.profile):
                 self.algorithm_d.process_batch(bound_batch)
             ministeps_made += 1
+            self.false_generated += self.d_out[:self.minibatches, 0].sum()
+            self.false_dataset += self.d_out[self.minibatches:, 1].sum()
+        self.false_generated /= self.k * self.minibatches
+        self.false_dataset /= self.k * self.minibatches
 
         noise = np.random.rand(self.noise_per_sample, self.minibatches).astype(np.float32)
         generated_batch = self._generator(noise)[0]

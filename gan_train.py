@@ -15,6 +15,7 @@ from blocks.algorithms import GradientDescent, Scale
 from blocks.extensions import Printing, Timing
 from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import TrainingDataMonitoring
+from blocks.utils import shared_like
 
 x = tensor.matrix('features')
 z = tensor.matrix('noise')
@@ -68,22 +69,40 @@ data_stream = Flatten(
 # uwaga: dyskryminator bierze 2m probek, pierwsze m to generowane, kolejne m to z danych
 
 observables = []
-g_out = list(generator_cg.outputs)
-d_out = list(discriminator_cg.outputs)
-for o in g_out:
-    o.name = 'generator_' + o.name
-for o in d_out:
-    o.name = 'discriminator_' + o.name
-observables += g_out
-observables += d_out
-observables.append(generator_descent.total_step_norm)
-observables.append(generator_descent.total_gradient_norm)
-observables.append(discriminator_descent.total_step_norm)
-observables.append(discriminator_descent.total_gradient_norm)
+
+g_out = shared_like(generator_cg.outputs[0], 
+                    name='generator_' + generator_cg.outputs[0].name)
+    
+d_out = shared_like(discriminator_cg.outputs[0], 
+                    name='discriminator_' + discriminator_cg.outputs[0].name)
+
+g_obs = []
+g_obs.append(shared_like(generator_descent.total_step_norm,
+                         name=generator_descent.total_step_norm.name))
+g_obs.append(shared_like(generator_descent.total_gradient_norm,
+                         name=generator_descent.total_gradient_norm.name))
+print g_obs
+ 
+d_obs = []
+d_obs.append(shared_like(discriminator_descent.total_step_norm,
+                         name=discriminator_descent.total_step_norm.name))
+d_obs.append(shared_like(discriminator_descent.total_gradient_norm,
+                         name=discriminator_descent.total_gradient_norm.name))
+print d_obs
+
+
+
+# generator_descent.add_updates([g_out] + g_obs)
+discriminator_descent.add_updates([(d_out, discriminator_cg.outputs[0])])
+false_generated = tensor.scalar('false_generated')
+false_dataset = tensor.scalar('false_dataset')
+observables = [false_generated, false_dataset]
+
+print observables
 
 extensions = []
 extensions.append(Timing(after_batch=True))
-# extensions.append(TrainingDataMonitoring(observables, after_batch=True))
+extensions.append(TrainingDataMonitoring(observables, after_batch=True))
 # extensions.append(TrainingDataMonitoring(observables, prefix='average', 
 #                                          every_n_batches=2000))
 extensions.append(Checkpoint('gan.thn', every_n_batches=10000, 
@@ -91,7 +110,11 @@ extensions.append(Checkpoint('gan.thn', every_n_batches=10000,
 extensions.append(Printing(every_n_batches=500))
 
 main_loop = GANMainLoop(algorithm_g=generator_descent,
+                        g_out=g_out,
                         algorithm_d=discriminator_descent,
+                        d_out=d_out,
+                        false_generated=false_generated,
+                        false_dataset=false_dataset,
                         data_stream=data_stream,
                         generator=generator_cg.get_theano_function(),
                         discriminator=discriminator_cg.get_theano_function(),
