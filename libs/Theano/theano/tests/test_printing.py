@@ -1,7 +1,7 @@
 """
 Tests of printing functionality
 """
-from __future__ import print_function
+from __future__ import absolute_import, print_function, division
 import logging
 
 from nose.plugins.skip import SkipTest
@@ -55,7 +55,7 @@ def test_pydotprint_return_image():
 
     x = tensor.dvector()
     ret = theano.printing.pydotprint(x * 2, return_image=True)
-    assert isinstance(ret, str)
+    assert isinstance(ret, (str, bytes))
 
 
 def test_pydotprint_variables():
@@ -169,7 +169,8 @@ def test_debugprint():
     g = theano.function([A, B, D, E], G, mode=mode)
 
     # just test that it work
-    debugprint(G)
+    s = StringIO()
+    debugprint(G, file=s)
 
     # test ids=int
     s = StringIO()
@@ -263,6 +264,28 @@ def test_debugprint():
         " |B  [None]",
         " |D  [None]",
         " |E  [None]",
+    ]) + '\n'
+    if s != reference:
+        print('--' + s + '--')
+        print('--' + reference + '--')
+
+    assert s == reference
+
+    # test clients
+    s = StringIO()
+    # We must force the mode as otherwise it can change the clients order
+    f = theano.function([A, B, D], [A + B, A + B - D],
+                        mode='FAST_COMPILE')
+    debugprint(f, file=s, print_clients=True)
+    s = s.getvalue()
+    # The additional white space are needed!
+    reference = '\n'.join([
+        "Elemwise{add,no_inplace} [id A] ''   0 clients:[('[id B]', 1), ('output', '')]",
+        " |A [id D]",
+        " |B [id E]",
+        "Elemwise{sub,no_inplace} [id B] ''   1",
+        " |Elemwise{add,no_inplace} [id A] ''   0 clients:[('[id B]', 1), ('output', '')]",
+        " |D [id F]",
     ]) + '\n'
     if s != reference:
         print('--' + s + '--')
@@ -514,8 +537,8 @@ def test_scan_debugprint4():
     def fn(a_m2, a_m1, b_m2, b_m1):
         return a_m1 + a_m2, b_m1 + b_m2
 
-    a0 = theano.shared(numpy.arange(2))
-    b0 = theano.shared(numpy.arange(2))
+    a0 = theano.shared(numpy.arange(2, dtype='int64'))
+    b0 = theano.shared(numpy.arange(2, dtype='int64'))
 
     (a, b), _ = theano.scan(
         fn, outputs_info=[{'initial': a0, 'taps': [-2, -1]},

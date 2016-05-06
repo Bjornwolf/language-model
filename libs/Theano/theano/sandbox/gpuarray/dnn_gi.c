@@ -79,8 +79,8 @@ APPLY_SPECIFIC(conv_gi)(PyGpuArrayObject *kerns, PyGpuArrayObject *output,
     cudnnConvolutionBwdDataAlgoPerf_t choice;
 
     err = cudnnFindConvolutionBackwardDataAlgorithm(
-      APPLY_SPECIFIC(_handle), APPLY_SPECIFIC(input), APPLY_SPECIFIC(output), desc,
-      APPLY_SPECIFIC(kerns), 1, &count, &choice);
+      APPLY_SPECIFIC(_handle), APPLY_SPECIFIC(kerns), APPLY_SPECIFIC(output), desc,
+      APPLY_SPECIFIC(input), 1, &count, &choice);
 
     if (err != CUDNN_STATUS_SUCCESS) {
       PyErr_Format(PyExc_RuntimeError, "error selecting convolution algo: %s",
@@ -91,19 +91,19 @@ APPLY_SPECIFIC(conv_gi)(PyGpuArrayObject *kerns, PyGpuArrayObject *output,
 
     algo = choice.algo;
 #else
-    size_t free = 0, total = 0;
-    cudaError_t err2 = cudaMemGetInfo(&free, &total);
-    if (err2 != cudaSuccess){
-      cudaGetLastError();
-      PyErr_Format(PyExc_RuntimeError, "Error when trying to find the memory "
-                   "information on the GPU: %s\n", cudaGetErrorString(err2));
+    size_t free;
+    int err2 = c->ops->property(c->ctx, NULL, NULL, GA_CTX_PROP_FREE_GMEM, &free);
+
+    if (err2 != GA_NO_ERROR) {
+      PyErr_Format(PyExc_RuntimeError, "Error when trying to find the "
+                   "memory information on the GPU");
       cuda_exit(c->ctx);
       return 1;
     }
 
     err = cudnnGetConvolutionBackwardDataAlgorithm(
-      APPLY_SPECIFIC(_handle), APPLY_SPECIFIC(input), APPLY_SPECIFIC(output),
-      desc, APPLY_SPECIFIC(kerns),
+      APPLY_SPECIFIC(_handle), APPLY_SPECIFIC(kerns), APPLY_SPECIFIC(output),
+      desc, APPLY_SPECIFIC(input),
       CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT, free, &algo);
     if (err != CUDNN_STATUS_SUCCESS) {
       PyErr_Format(PyExc_RuntimeError, "error selecting convolution algo: %s",
@@ -146,7 +146,7 @@ APPLY_SPECIFIC(conv_gi)(PyGpuArrayObject *kerns, PyGpuArrayObject *output,
     int upscale[2];
     cudnnConvolutionMode_t mode;
     cudnnDataType_t data_type;
-    err = cudnnGetConvolutionNdDescriptor_v3(desc, 2, &nd, pad, stride,
+    err = cudnnGetConvolutionNdDescriptor(desc, 2, &nd, pad, stride,
                                              upscale, &mode, &data_type);
     if (err != CUDNN_STATUS_SUCCESS) {
       PyErr_Format(PyExc_RuntimeError,
@@ -203,7 +203,7 @@ APPLY_SPECIFIC(conv_gi)(PyGpuArrayObject *kerns, PyGpuArrayObject *output,
   cuda_wait(output->ga.data, GPUARRAY_CUDA_WAIT_READ);
   cuda_wait((*input)->ga.data, GPUARRAY_CUDA_WAIT_WRITE);
 
-  err = cudnnConvolutionBackwardData_v3(
+  err = cudnnConvolutionBackwardData(
     APPLY_SPECIFIC(_handle),
     alpha_p,
     APPLY_SPECIFIC(kerns), PyGpuArray_DEV_DATA(kerns),
