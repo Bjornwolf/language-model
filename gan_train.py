@@ -4,6 +4,20 @@ from data import build_datasets
 from model import build_model, build_algorithm
 from monitor import build_extensions
 from blocks.model import Model
+from blocks.main_loop import TrainingFinish
+
+"""The event-based main loop of Blocks."""
+import signal
+import logging
+import traceback
+
+from blocks.config import config
+from blocks.log import BACKENDS
+from blocks.utils import reraise_as, unpack, change_recursion_limit
+from blocks.utils.profile import Profile, Timer
+from blocks.algorithms import DifferentiableCostMinimizer
+from blocks.extensions import CallbackName
+from blocks.model import Model
 
 import numpy as np
 from theano.compile.sharedvalue import SharedVariable
@@ -16,6 +30,38 @@ from blocks.extensions import Printing, Timing
 from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import TrainingDataMonitoring
 from blocks.utils import shared_like
+
+logger = logging.getLogger(__name__)
+
+error_message = """
+
+Blocks will attempt to run `on_error` extensions, potentially saving data, \
+before exiting and reraising the error. Note that the usual `after_training` \
+extensions will *not* be run. The original error will be re-raised and also \
+stored in the training log. Press CTRL + C to halt Blocks immediately."""
+
+error_in_error_handling_message = """
+
+Blocks will now exit. The remaining `on_error` extensions will not be run."""
+
+
+epoch_interrupt_message = """
+
+Blocks will complete this epoch of training and run extensions \
+before exiting. If you do not want to complete this epoch, press CTRL + C \
+again to stop training after the current batch."""
+
+batch_interrupt_message = """
+
+Blocks will complete the current batch and run extensions before exiting. If \
+you do not want to complete this batch, press CTRL + C again. WARNING: Note \
+that this will end training immediately, and extensions that e.g. save your \
+training progress won't be run."""
+
+no_model_message = """
+
+A possible reason: one of your extensions requires the main loop to have \
+a model. Check documentation of your extensions."""
 
 class GANMainLoop(object):
     """The standard main loop for GAN.
@@ -362,11 +408,11 @@ d_out = shared_like(discriminator_cg.outputs[0],
                     name='discriminator_' + discriminator_cg.outputs[0].name)
 
 false_generated = SharedVariable(name='false_generated', 
-                                 type=tensor.TensorType('float64', []), 
+                                 type=tensor.TensorType('float32', []), 
                                  value=0., 
                                  strict=False)
 false_dataset = SharedVariable(name='false_dataset', 
-                               type=tensor.TensorType('float64', []), 
+                               type=tensor.TensorType('float32', []), 
                                value=0., 
                                strict=False)
 
