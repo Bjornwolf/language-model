@@ -255,11 +255,8 @@ class GANMainLoop(object):
 
     def _run_iteration(self):
         ministeps_made = 0
-        print "IT"
-        print self.false_generated.value
-        self.false_generated.value = 0.
-        self.false_dataset.value = 0.
-        print self.false_generated.value
+        self.false_generated.set_value(0.)
+        self.false_dataset.set_value(0.)
         while ministeps_made < self.k:
             try:
                 with Timer('read_data', self.profile):
@@ -280,10 +277,9 @@ class GANMainLoop(object):
             with Timer('train', self.profile):
                 self.algorithm_d.process_batch(bound_batch)
             ministeps_made += 1
-            print self.false_generated.value
         
-        false_generated_perc = self.false_generated.value / (self.k * self.minibatches)
-        false_dataset_perc = self.false_dataset.value / (self.k * self.minibatches)
+        false_generated_perc = self.false_generated.get_value() / (self.k * self.minibatches)
+        false_dataset_perc = self.false_dataset.get_value() / (self.k * self.minibatches)
         print false_generated_perc
         print false_dataset_perc
         noise = np.random.rand(self.noise_per_sample, self.minibatches).astype(np.float32)
@@ -417,11 +413,12 @@ false_dataset = SharedVariable(name='false_dataset',
                                strict=False)
 
 # generator_descent.add_updates([g_out] + g_obs)
+'''
 discriminator_descent.add_updates([(false_generated, false_generated +
                                     (discriminator_cg.outputs[0] > 0.5)[:m, 0].sum()),
                                    (false_dataset, false_dataset + 
                                     (discriminator_cg.outputs[0] > 0.5)[m:, 1].sum())])
-
+'''
 
 
 
