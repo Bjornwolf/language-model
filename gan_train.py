@@ -413,12 +413,10 @@ false_dataset = SharedVariable(name='false_dataset',
                                strict=False)
 
 # generator_descent.add_updates([g_out] + g_obs)
-'''
 discriminator_descent.add_updates([(false_generated, false_generated +
                                     (discriminator_cg.outputs[0] > 0.5)[:m, 0].sum()),
                                    (false_dataset, false_dataset + 
                                     (discriminator_cg.outputs[0] > 0.5)[m:, 1].sum())])
-'''
 
 
 
