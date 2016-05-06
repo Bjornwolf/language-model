@@ -84,6 +84,8 @@ We can here see that the error can be traced back to the line ``z = z + y``.
 For this example, using ``optimizer=fast_compile`` worked. If it did not,
 you could set ``optimizer=None`` or use test values.
 
+.. _test_values:
+
 Using Test Values
 -----------------
 
@@ -336,7 +338,7 @@ shows how to print all inputs and outputs:
               end='')
 
     def inspect_outputs(i, node, fn):
-        print("output(s) value(s):", [output[0] for output in fn.outputs])
+        print(" output(s) value(s):", [output[0] for output in fn.outputs])
 
     x = theano.tensor.dscalar('x')
     f = theano.function([x], [5 * x],
@@ -552,7 +554,7 @@ If you are reading this, there is high chance that you emailed our
 mailing list and we asked you to read this section. This section
 explain how to dump all the parameter passed to
 ``theano.function()``. This is useful to help us reproduce a problem
-during compilation and it don't request you to make a self contained
+during compilation and it doesn't request you to make a self contained
 example.
 
 For this to work, we need to be able to import the code for all Op in

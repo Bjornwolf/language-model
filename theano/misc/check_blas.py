@@ -5,7 +5,7 @@
 # C=a*C+dot(A,B)*b
 # A,B,C matrix
 # a,b scalar
-from __future__ import print_function
+from __future__ import absolute_import, print_function, division
 
 import os
 import sys
@@ -232,7 +232,7 @@ if __name__ == "__main__":
         GT 610            2.38s
         GTX 550 Ti                                                  0.57s
         GT 520                                        2.68s                3.06s
-        520M                                   2.44s                       3.19s        # with bumblebee on Ubuntu 12.04
+        GT 520M                                2.44s                       3.19s        # with bumblebee on Ubuntu 12.04
         GT 220                                                             3.80s
         GT 210                                                      6.35s
         8500 GT                                                                   10.68s
@@ -264,7 +264,7 @@ if __name__ == "__main__":
         GTX 780
         GTX 980 Ti        0.41s
         GTX 980
-        GTX 970
+        GTX 970           0.66s
         GTX 680                  1.57s
         GRID K520
         GTX 750 Ti        2.01s  2.01s
@@ -272,6 +272,7 @@ if __name__ == "__main__":
         GTX 660           2.32s  2.32s
         GTX 580           2.42s         2.47s
         GTX 480           2.87s         2.88s
+        TX1                      7.6s (float32 storage and computation)
         GT 610                   33.5s
         """)
 

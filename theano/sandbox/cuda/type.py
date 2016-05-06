@@ -2,7 +2,7 @@
 Provide CudaNdarrayType.
 
 """
-from __future__ import print_function
+from __future__ import absolute_import, print_function, division
 import os
 import six.moves.copyreg as copyreg
 import warnings
@@ -21,6 +21,16 @@ try:
     import cuda_ndarray.cuda_ndarray as cuda
     from theano.sandbox.cuda.nvcc_compiler import NVCC_compiler
     import cuda_ndarray
+    # Python 3 does not necessarily set __file__. May need manual setting.
+    # The problem is known to occur on Windows 10 with Python 3.4 installed by Anaconda.
+    try:
+        cuda_ndarray.__file__
+    except AttributeError:
+        from theano.gof.cmodule import get_lib_extension
+        # Only works with Python 3, but it's fine, because Python 2
+        # guarantees to set __file__ when importing any module.
+        cuda_ndarray.__file__ = os.path.join(cuda_ndarray.__path__._path[0],
+                                             'cuda_ndarray.' + get_lib_extension())
 except ImportError:
     # Used to know that `cuda` could not be properly imported.
     cuda = None
@@ -120,10 +130,10 @@ class CudaNdarrayType(Type):
                         type(data) is float and
                         self.dtype == theano.config.floatX):
                     return cuda.filter(converted_data, self.broadcastable,
-                            strict, old_data)
+                                       strict, old_data)
                 elif numpy.all(data == converted_data):
                     return cuda.filter(converted_data, self.broadcastable,
-                            strict, old_data)
+                                       strict, old_data)
                 else:
                     raise TypeError(
                         '%s, with dtype %s, cannot store accurately value %s, '
@@ -249,8 +259,8 @@ class CudaNdarrayType(Type):
                     'complex64': (complex, 'theano_complex64',
                                   'NPY_COMPLEX64')}[self.dtype]
         except KeyError:
-            raise TypeError("Unsupported dtype for %s: %s" % (
-                    self.__class__.__name__, self.dtype))
+            raise TypeError("Unsupported dtype for %s: %s" %
+                            (self.__class__.__name__, self.dtype))
 
     def __eq__(self, other):
         """
@@ -261,10 +271,11 @@ class CudaNdarrayType(Type):
                 other.broadcastable == self.broadcastable)
 
     def convert_variable(self, var):
-        if (type(self) == type(var.type) and
-            self.ndim == var.type.ndim and
-            all(sb == ob or ob for sb, ob in zip(self.broadcastable,
-                                                 var.type.broadcastable))):
+        if (isinstance(self, type(var.type)) and
+                self.ndim == var.type.ndim and
+                all(sb == ob or ob for sb, ob in zip(
+                    self.broadcastable,
+                    var.type.broadcastable))):
             return theano.tensor.patternbroadcast(var, self.broadcastable)
 
     def __hash__(self):
@@ -302,7 +313,7 @@ class CudaNdarrayType(Type):
             return self.name
         else:
             b = self.broadcastable
-            #bcast = str(self.broadcastable)
+            # bcast = str(self.broadcastable)
             if not numpy.any(b):
                 s = "%iD" % len(b)
             else:
@@ -317,7 +328,7 @@ class CudaNdarrayType(Type):
 
     def __repr__(self):
         return str(self)
-        #"CudaNdarrayType{%s, %s}" % (str(self.dtype), str(self.broadcastable))
+        # "CudaNdarrayType{%s, %s}" % (str(self.dtype), str(self.broadcastable))
 
     def c_declare(self, name, sub, check_input=True):
         return """ CudaNdarray * %(name)s;""" % locals()
@@ -407,7 +418,7 @@ class CudaNdarrayType(Type):
         return sio.getvalue()
 
     def c_extract_out(self, name, sub, check_input=True, check_broadcast=True):
-        """ 
+        """
         To allow the hack to skip check_broadcast.
 
         """
@@ -518,13 +529,13 @@ theano.compile.ops.expandable_types += (CudaNdarrayType,)
 
 # Register C code for ViewOp on CudaNdarrayType
 theano.compile.register_view_op_c_code(
-        CudaNdarrayType,
-        """
-        Py_XDECREF(%(oname)s);
-        %(oname)s = %(iname)s;
-        Py_XINCREF(%(oname)s);
-        """,
-        version=1)
+    CudaNdarrayType,
+    """
+    Py_XDECREF(%(oname)s);
+    %(oname)s = %(iname)s;
+    Py_XINCREF(%(oname)s);
+    """,
+    version=1)
 
 theano.compile.register_shape_i_c_code(
     CudaNdarrayType,
@@ -545,16 +556,15 @@ theano.compile.register_shape_i_c_code(
 
 # Register CudaNdarrayType to the DeepCopyOp list of types with c code.
 theano.compile.register_deep_copy_op_c_code(
-        CudaNdarrayType,
-        """
-        int alloc = %(oname)s == NULL;
-        for(int i=0; !alloc && i<CudaNdarray_NDIM(%(oname)s); i++) {
-           if(CudaNdarray_HOST_DIMS(%(iname)s)[i] !=
-              CudaNdarray_HOST_DIMS(%(oname)s)[i]) {
-               alloc = true;
-               break;
-           }
-        }
+    CudaNdarrayType,
+    """
+    int alloc = %(oname)s == NULL;
+    for(int i=0; !alloc && i<CudaNdarray_NDIM(%(oname)s); i++) {
+    if(CudaNdarray_HOST_DIMS(%(iname)s)[i] !=
+    CudaNdarray_HOST_DIMS(%(oname)s)[i]) {
+    alloc = true;
+    break;
+    }}
         if(alloc) {
             Py_XDECREF(%(oname)s);
             %(oname)s = (CudaNdarray*)CudaNdarray_Copy(%(iname)s);
@@ -571,8 +581,7 @@ theano.compile.register_deep_copy_op_c_code(
                 %(fail)s;
             }
         }
-        """,
-        version=3)
+        """, version=3)
 
 
 # THIS WORKS But CudaNdarray instances don't compare equal to one
@@ -598,5 +607,5 @@ def CudaNdarray_pickler(cnda):
 
 # In case cuda is not imported.
 if cuda is not None:
-    copyreg.pickle(cuda.CudaNdarray, CudaNdarray_pickler,
-                    CudaNdarray_unpickler)
+    copyreg.pickle(
+        cuda.CudaNdarray, CudaNdarray_pickler, CudaNdarray_unpickler)
