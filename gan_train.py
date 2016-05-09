@@ -22,10 +22,11 @@ from blocks.model import Model
 import numpy as np
 from theano.compile.sharedvalue import SharedVariable
 from theano import tensor
+import theano
 from blocks.graph import ComputationGraph
-from blocks.bricks import MLP, Rectifier, Softmax
+from blocks.bricks import MLP, Rectifier, Softmax, Maxout, Logistic
 from blocks.initialization import IsotropicGaussian, Constant
-from blocks.algorithms import GradientDescent, Scale
+from blocks.algorithms import GradientDescent, Scale, Momentum
 from blocks.extensions import Printing, Timing
 from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import TrainingDataMonitoring
@@ -179,11 +180,8 @@ class GANMainLoop(object):
                         extension.main_loop = self
                     self._run_extensions('before_training')
                     with Timer('initialization', self.profile):
-                        print 'pre-initialized algos'
                         self.algorithm_g.initialize()
-                        print 'g initialized'
                         self.algorithm_d.initialize()
-                        print 'initialized algos'
                     self.status['training_started'] = True
                 # We can not write "else:" here because extensions
                 # called "before_training" could have changed the status
@@ -268,7 +266,7 @@ class GANMainLoop(object):
             self.log.status['received_first_batch'] = True
             self._run_extensions('before_batch', batch)
             batch = batch['features']
-            noise = np.random.rand(self.noise_per_sample, self.minibatches).astype(np.float32)
+            noise = np.random.rand(self.minibatches, self.noise_per_sample).astype(np.float32)
             generated_batch = self._generator(noise)[0]
             bound_batch = np.zeros((batch.shape[0] * 2, batch.shape[1]), dtype=np.float32)
             bound_batch[:self.minibatches, :] = generated_batch
@@ -280,15 +278,15 @@ class GANMainLoop(object):
         
         false_generated_perc = self.false_generated.get_value() / (self.k * self.minibatches)
         false_dataset_perc = self.false_dataset.get_value() / (self.k * self.minibatches)
-        print false_generated_perc
-        print false_dataset_perc
-        noise = np.random.rand(self.noise_per_sample, self.minibatches).astype(np.float32)
+        self.log[self.status['iterations_done'] + 1]['error_on_generated'] = false_generated_perc
+        self.log[self.status['iterations_done'] + 1]['error_on_dataset'] = false_dataset_perc
+        noise = np.random.rand(self.minibatches, self.noise_per_sample).astype(np.float32)
         noise_batch = {'noise': noise}
         with Timer('train', self.profile):
             self.algorithm_g.process_batch(noise_batch)
 
         self.status['iterations_done'] += 1
-        self._run_extensions('after_batch', batch)
+        self._run_extensions('after_batch', bound_batch)
         self._check_finish_training('batch')
         return True
 
@@ -347,10 +345,10 @@ class GANMainLoop(object):
 features = tensor.matrix('features')
 noise = tensor.matrix('noise')
 
-m = 10
+m = 100
 
-g = MLP(activations=[Rectifier(), Rectifier()], dims=[10, 500, 784])
-d = MLP(activations=[Rectifier(), Softmax()], dims=[784, 100, 2])
+g = MLP(activations=[Rectifier(), Rectifier(), Rectifier(), Rectifier(), Logistic()], dims=[100, 2400, 2400, 2400, 2400, 784])
+d = MLP(activations=[Rectifier(), Rectifier(), Logistic()], dims=[784, 2400, 2400, 1])
 
 generated_samples = g.apply(noise)
 discriminated_features = d.apply(features)
@@ -360,10 +358,11 @@ generator_cg = ComputationGraph(generated_samples)
 discriminator_cg = ComputationGraph(discriminated_features)
 generator_parameters = generator_cg.parameters
 
-cost_discriminator = (tensor.log(discriminated_features[:m, 1]).sum() + tensor.log(discriminated_features[m:, 0]).sum()) * -1/m
-cost_generator = tensor.log(discriminated_samples[:, 0]).sum() * -1/m
+cost_discriminator = (tensor.log(1. - discriminated_features[:m]).sum() + tensor.log(discriminated_features[m:]).sum()) * -1/m
+cost_generator = tensor.log(discriminated_samples).sum() * -1/m
 
-g.weights_init = d.weights_init = IsotropicGaussian(0.01)
+g.weights_init = IsotropicGaussian(0.05)
+d.weights_init = IsotropicGaussian(0.005)
 g.biases_init = d.biases_init = Constant(0)
 
 g.initialize()
@@ -371,10 +370,10 @@ d.initialize()
 
 discriminator_descent = GradientDescent(cost=cost_discriminator, 
                                         parameters=discriminator_cg.parameters,
-                                        step_rule=Scale(0.01))
+                                        step_rule=Momentum(0.01, 0.1))
 generator_descent = GradientDescent(cost=cost_generator, 
                                     parameters=generator_cg.parameters, 
-                                    step_rule=Scale(0.01))
+                                    step_rule=Momentum(0.01, 0.1))
 
 generator_descent.total_step_norm.name = 'generator_total_step_norm'
 generator_descent.total_gradient_norm.name = 'generator_total_gradient_norm'
@@ -403,29 +402,23 @@ g_out = shared_like(generator_cg.outputs[0],
 d_out = shared_like(discriminator_cg.outputs[0], 
                     name='discriminator_' + discriminator_cg.outputs[0].name)
 
-false_generated = SharedVariable(name='false_generated', 
-                                 type=tensor.TensorType('float32', []), 
-                                 value=0., 
-                                 strict=False)
-false_dataset = SharedVariable(name='false_dataset', 
-                               type=tensor.TensorType('float32', []), 
-                               value=0., 
-                               strict=False)
+false_generated = theano.shared(value=np.array(0., dtype=np.float32),
+                                name='false_generated')
 
-# generator_descent.add_updates([g_out] + g_obs)
+false_dataset = theano.shared(np.array(0., dtype='float32'),
+                              name='false_dataset')
+
 discriminator_descent.add_updates([(false_generated, false_generated +
-                                    (discriminator_cg.outputs[0] > 0.5)[:m, 0].sum()),
+                                    (discriminator_cg.outputs[0] > 0.5)[:m].sum().astype('float32')),
                                    (false_dataset, false_dataset + 
-                                    (discriminator_cg.outputs[0] > 0.5)[m:, 1].sum())])
-
-
+                                    (discriminator_cg.outputs[0] < 0.5)[m:].sum().astype('float32'))])
 
 
 extensions = []
 extensions.append(Timing(after_batch=True))
 extensions.append(Checkpoint('gan.thn', every_n_batches=10000, 
                              use_cpickle=True, save_separately=['log']))
-extensions.append(Printing(every_n_batches=500))
+extensions.append(Printing(every_n_batches=1000000))
 
 main_loop = GANMainLoop(algorithm_g=generator_descent,
                         g_out=g_out,
@@ -437,6 +430,7 @@ main_loop = GANMainLoop(algorithm_g=generator_descent,
                         generator=generator_cg.get_theano_function(),
                         discriminator=discriminator_cg.get_theano_function(),
                         k=1,
+                        noise_per_sample=100,
                         minibatches=m,
                         extensions=extensions)
 
