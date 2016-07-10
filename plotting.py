@@ -34,5 +34,6 @@ gn = map(lambda x: main_loop.log[x]['total_gradient_norm'], t_xs)
 lr = map(lambda x: main_loop.log[x]['learning_rate'], t_xs)
 #print [np.percentile(gn, i) for i in range(101)]
 vbpc = map(lambda x: main_loop.log[x]['valid_bits_per_character'], v_xs)
+print vbpc[-1]
 blob = ((t_xs, bpc), (v_xs, vbpc), (t_xs, gn), (t_xs, lr), 1.75)
 pickle.dump(blob, open('plots/' + sys.argv[1][:-5], 'w'))

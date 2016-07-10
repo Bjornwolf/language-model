@@ -1,5 +1,5 @@
 #!/bin/bash
-source /pio/os/cuda-7.0/set-env.sh
+source /pio/os/cuda-7.5/set-env.sh
 export PATH=/pio/os/anaconda/bin:$PATH
 export OPENSSL_CONF=/home/bjornwolf/anaconda/ssl/openssl.cnf
 

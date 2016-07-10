@@ -24,9 +24,9 @@ from theano.compile.sharedvalue import SharedVariable
 from theano import tensor
 import theano
 from blocks.graph import ComputationGraph
-from blocks.bricks import MLP, Rectifier, Softmax, Maxout, Logistic
+from blocks.bricks import MLP, Rectifier, Softmax, Maxout, Logistic, Identity, Tanh
 from blocks.initialization import IsotropicGaussian, Constant
-from blocks.algorithms import GradientDescent, Scale, Momentum
+from blocks.algorithms import GradientDescent, Scale, RMSProp, Momentum
 from blocks.extensions import Printing, Timing
 from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import TrainingDataMonitoring
@@ -90,9 +90,9 @@ class GANMainLoop(object):
 
     """
     def __init__(self, algorithm_g, g_out, algorithm_d, d_out, data_stream, 
-                 false_generated, false_dataset,
+                 false_generated, false_dataset, generator_errors,
                  generator=None, discriminator=None, noise_per_sample=10, k=1,
-                 minibatches=1, log=None, log_backend=None, extensions=None):
+                 minibatches=1, log=None, log_backend=None, extensions=None, observables=[]):
         if log is None:
             if log_backend is None:
                 log_backend = config.log_backend
@@ -113,6 +113,9 @@ class GANMainLoop(object):
         self.noise_per_sample = noise_per_sample
         self.false_generated = false_generated
         self.false_dataset = false_dataset
+        self.generator_errors = generator_errors
+        self.observables = observables
+        self.first_batch = None
 
         self.profile = Profile()
 
@@ -252,7 +255,7 @@ class GANMainLoop(object):
         return True
 
     def _run_iteration(self):
-        ministeps_made = 0
+        ministeps_made = 0 # disabled D learning
         self.false_generated.set_value(0.)
         self.false_dataset.set_value(0.)
         while ministeps_made < self.k:
@@ -271,8 +274,12 @@ class GANMainLoop(object):
             bound_batch = np.zeros((batch.shape[0] * 2, batch.shape[1]), dtype=np.float32)
             bound_batch[:self.minibatches, :] = generated_batch
             bound_batch[self.minibatches:, :] = batch
+            np.save('generated.npy', generated_batch)
             bound_batch = {'features': bound_batch}
+            # if self.first_batch is None:
+            #     self.first_batch = bound_batch
             with Timer('train', self.profile):
+                # self.algorithm_d.process_batch(self.first_batch)
                 self.algorithm_d.process_batch(bound_batch)
             ministeps_made += 1
         
@@ -280,11 +287,15 @@ class GANMainLoop(object):
         false_dataset_perc = self.false_dataset.get_value() / (self.k * self.minibatches)
         self.log[self.status['iterations_done'] + 1]['error_on_generated'] = false_generated_perc
         self.log[self.status['iterations_done'] + 1]['error_on_dataset'] = false_dataset_perc
+        self.generator_errors.set_value(0.)
         noise = np.random.rand(self.minibatches, self.noise_per_sample).astype(np.float32)
         noise_batch = {'noise': noise}
         with Timer('train', self.profile):
             self.algorithm_g.process_batch(noise_batch)
-
+        gen_errors = self.generator_errors.get_value() / self.minibatches
+        self.log[self.status['iterations_done'] + 1]['generator_errors'] = gen_errors
+        for o in self.observables:
+            self.log[self.status['iterations_done'] + 1][o.name] = o.get_value()
         self.status['iterations_done'] += 1
         self._run_extensions('after_batch', bound_batch)
         self._check_finish_training('batch')
@@ -345,10 +356,11 @@ class GANMainLoop(object):
 features = tensor.matrix('features')
 noise = tensor.matrix('noise')
 
-m = 100
 
-g = MLP(activations=[Rectifier(), Rectifier(), Rectifier(), Rectifier(), Logistic()], dims=[100, 2400, 2400, 2400, 2400, 784])
-d = MLP(activations=[Rectifier(), Rectifier(), Logistic()], dims=[784, 2400, 2400, 1])
+# g = MLP(activations=[Logistic()], dims=[100, 784])
+# d = MLP(activations=[Identity()], dims=[784, 1])
+g = MLP(activations=[Identity(), Identity(), Identity(), Identity(), Rectifier()], dims=[100, 2400, 2400, 2400, 2400, 784])
+d = MLP(activations=[Tanh(), Tanh(), Identity()], dims=[784, 1200, 1200, 1])
 
 generated_samples = g.apply(noise)
 discriminated_features = d.apply(features)
@@ -356,10 +368,13 @@ discriminated_samples = d.apply(generated_samples)
 
 generator_cg = ComputationGraph(generated_samples)
 discriminator_cg = ComputationGraph(discriminated_features)
+dsamples_cg = ComputationGraph(discriminated_samples)
 generator_parameters = generator_cg.parameters
 
-cost_discriminator = (tensor.log(1. - discriminated_features[:m]).sum() + tensor.log(discriminated_features[m:]).sum()) * -1/m
-cost_generator = tensor.log(discriminated_samples).sum() * -1/m
+m = 100
+b_size = discriminated_features.shape[0] / 2
+cost_generator = tensor.sum(tensor.log(1 + tensor.exp(-discriminated_samples))) / discriminated_samples.shape[0].astype('float32')
+cost_discriminator = (tensor.sum(discriminated_features[:b_size]) + tensor.sum(tensor.log(1 + tensor.exp(-discriminated_features)))) / b_size.astype('float32')
 
 g.weights_init = IsotropicGaussian(0.05)
 d.weights_init = IsotropicGaussian(0.005)
@@ -368,12 +383,33 @@ g.biases_init = d.biases_init = Constant(0)
 g.initialize()
 d.initialize()
 
+for param in generator_cg.parameters:
+    param.name += '_g'
+
+for param in discriminator_cg.parameters:
+    param.name += '_d'
+
+both = list(set(dsamples_cg.parameters) & set(generator_cg.parameters))
+indices = []
+for (i, par) in enumerate(dsamples_cg.parameters):
+    if par in generator_cg.parameters:
+        indices.append(i)
+
+good_params = [dsamples_cg.parameters[i] for i in indices]
+print 'tests'
+for param in dsamples_cg.parameters:
+    print param.name
+
 discriminator_descent = GradientDescent(cost=cost_discriminator, 
                                         parameters=discriminator_cg.parameters,
-                                        step_rule=Momentum(0.01, 0.1))
+                                        step_rule=RMSProp(learning_rate=0.01, decay_rate=0.97))
+print filter(lambda x: x.name[-2:] == '_g', dsamples_cg.parameters)
 generator_descent = GradientDescent(cost=cost_generator, 
-                                    parameters=generator_cg.parameters, 
-                                    step_rule=Momentum(0.01, 0.1))
+                                    parameters=filter(lambda x: x.name[-2:] == '_g', 
+                                                      dsamples_cg.parameters),
+                                    # parameters=good_params,
+                                    # parameters=dsamples_cg.parameters,
+                                    step_rule=RMSProp(learning_rate=1., decay_rate=0.97))
 
 generator_descent.total_step_norm.name = 'generator_total_step_norm'
 generator_descent.total_gradient_norm.name = 'generator_total_gradient_norm'
@@ -394,7 +430,33 @@ data_stream = Flatten(
 
 # uwaga: dyskryminator bierze 2m probek, pierwsze m to generowane, kolejne m to z danych
 
+# observables.append(cost_discriminator)
+
+generator_cost = theano.shared(value=np.array(0., dtype=np.float32), name='g_cost')
+discriminator_cost = theano.shared(value=np.array(0., dtype=np.float32), name='d_cost')
+
+generator_step_norm = theano.shared(value=np.array(0., dtype=np.float32), name='g_step_norm')
+generator_grad_norm = theano.shared(value=np.array(0., dtype=np.float32), name='g_grad_norm')
+discriminator_step_norm = theano.shared(value=np.array(0., dtype=np.float32), name='d_step_norm')
+discriminator_grad_norm = theano.shared(value=np.array(0., dtype=np.float32), name='d_grad_norm')
+
+discriminator_descent.add_updates([
+    (discriminator_cost, ComputationGraph(cost_discriminator).outputs[0]),
+    (discriminator_step_norm, discriminator_descent.total_step_norm),
+    (discriminator_grad_norm, discriminator_descent.total_gradient_norm)])
+
+generator_descent.add_updates([
+    (generator_cost, ComputationGraph(cost_generator).outputs[0]),
+    (generator_step_norm, generator_descent.total_step_norm),
+    (generator_grad_norm, generator_descent.total_gradient_norm)])
+
 observables = []
+observables.append(generator_cost)
+observables.append(discriminator_cost)
+observables.append(generator_step_norm)
+observables.append(generator_grad_norm)
+observables.append(discriminator_step_norm)
+observables.append(discriminator_grad_norm)
 
 g_out = shared_like(generator_cg.outputs[0], 
                     name='generator_' + generator_cg.outputs[0].name)
@@ -408,17 +470,22 @@ false_generated = theano.shared(value=np.array(0., dtype=np.float32),
 false_dataset = theano.shared(np.array(0., dtype='float32'),
                               name='false_dataset')
 
+gen_errors = theano.shared(np.array(0., dtype='float32'),
+                           name='generator_errors')
+
 discriminator_descent.add_updates([(false_generated, false_generated +
                                     (discriminator_cg.outputs[0] > 0.5)[:m].sum().astype('float32')),
                                    (false_dataset, false_dataset + 
                                     (discriminator_cg.outputs[0] < 0.5)[m:].sum().astype('float32'))])
+generator_descent.add_updates([(gen_errors, gen_errors + (ComputationGraph(discriminated_samples).outputs[0] > 0.5).sum().astype('float32'))])
 
 
 extensions = []
 extensions.append(Timing(after_batch=True))
 extensions.append(Checkpoint('gan.thn', every_n_batches=10000, 
                              use_cpickle=True, save_separately=['log']))
-extensions.append(Printing(every_n_batches=1000000))
+extensions.append(Printing(every_n_batches=1))
+
 
 main_loop = GANMainLoop(algorithm_g=generator_descent,
                         g_out=g_out,
@@ -426,13 +493,14 @@ main_loop = GANMainLoop(algorithm_g=generator_descent,
                         d_out=d_out,
                         false_generated=false_generated,
                         false_dataset=false_dataset,
+                        generator_errors=gen_errors,
                         data_stream=data_stream,
                         generator=generator_cg.get_theano_function(),
                         discriminator=discriminator_cg.get_theano_function(),
                         k=1,
                         noise_per_sample=100,
                         minibatches=m,
-                        extensions=extensions)
+                        extensions=extensions,
+                        observables=observables)
 
 main_loop.run()
-
