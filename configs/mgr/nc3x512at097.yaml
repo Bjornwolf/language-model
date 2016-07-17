@@ -1,0 +1,36 @@
+working_mode: train_new
+unknown_char: <<UNK>>
+
+lstm_layers: 3
+lstm_dim_0: 512
+lstm_dim_1: 512
+lstm_dim_2: 512
+lstm_init_width: 0.16
+
+step_rules_no: 2
+step_rule_0: StepClipping 
+step_rule_0_params: 
+    threshold: 1.75
+step_rule_1: RMSProp
+step_rule_1_params:
+    learning_rate: 0.005
+    decay_rate: 0.95
+    max_scaling: 100000
+
+
+minibatches: 10
+batch_length: 30
+batch_overlap: 25
+
+lr_decay: 0.97
+lr_decay_frequency: 500
+
+average_frequency: 1000
+checkpoint_frequency: 1000
+printing_frequency: 250
+valid_frequency: 500
+
+dict_path: /pio/scratch/1/i246059/language-model/tokens.p
+train_path: /pio/scratch/1/i246059/data/phon/train_nc/
+valid_path: /pio/scratch/1/i246059/data/phon/test_nc/
+checkpoint_path: /pio/scratch/1/i246059/language-model/models/mgr3x512ncat097.thn
